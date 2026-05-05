@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-description: Prose explanation of the equiforge pipeline — what each phase does, what blocks, what runs in parallel, where outputs land. Read this for the phase narrative; read workflow_meta.json for the machine-readable contract. The contract is bracketed by an incident pre-check before P0_intent and an incident post-check before P_DB_INDEX; report and card pipelines are each followed by a parallel red-team review.
+description: Prose explanation of the Anamnesis Research pipeline — what each phase does, what blocks, what runs in parallel, where outputs land. Read this for the phase narrative; read workflow_meta.json for the machine-readable contract. The contract is bracketed by an incident pre-check before P0_intent and an incident post-check before P_DB_INDEX; report and card pipelines are each followed by a parallel red-team review.
 ---
 
 # Phase contract
@@ -8,6 +8,46 @@ description: Prose explanation of the equiforge pipeline — what each phase doe
 `workflow_meta.json` is the source of truth for phase IDs, tools, agents, parallelism, retry policies, and produced artifacts. **If anything in this prose disagrees with `workflow_meta.json`, the JSON wins.** This file is the prose companion: it explains *why* each phase exists and how it connects to the next.
 
 For runtime procedure (the orchestrator's step-by-step), see `agents/orchestrator.md`. This file is for understanding the pipeline shape.
+
+## Phase id index
+
+The prose below uses dotted shorthand (P1.5, P3.6, P5.7) that maps to canonical phase ids in `workflow_meta.json`. `tools/research/validate_workflow_meta.py` cross-checks that every id below appears literally somewhere in this file; keep both columns in sync when adding or renaming a phase.
+
+| Section narrative | Canonical id |
+|---|---|
+| Incident pre-check | `P_INCIDENT_PRECHECK` |
+| P0 — intent | `P0_intent` |
+| P0 — language | `P0_lang` |
+| P0 — SEC email | `P0_sec_email` |
+| P0 — palette | `P0_palette` |
+| P0 — meta validation | `P0M_meta` |
+| P0 — DB precheck | `P0_DB_PRECHECK` |
+| P1 — parallel research | `P1_parallel_research` |
+| P1.5 — edge insight | `P1_5_edge` |
+| P2 — financial analysis | `P2_fin_analysis` |
+| P2.5 — prediction waterfall | `P2_5_waterfall` |
+| P2.6 — macro QC peers | `P2_6_qc_macro` |
+| P3 — Porter analysis | `P3_porter` |
+| P3.5 — Porter QC peers | `P3_5_qc_porter` |
+| P3.6 — QC resolution merge | `P3_6_qc_merge` |
+| P3.7 — cross-validation | `P3_7_X_VALIDATE` |
+| P4 — Sankey injection | `P4_sankey` |
+| P5 — HTML report writer | `P5_html` |
+| P5_gate — HTML structural gate | `P5_html_gate` |
+| P5.5 — final report data validator | `P5_5_data_val` |
+| P5.7 — red team report | `P5_7_RED_TEAM` |
+| P6 — packaging + report validator | `P6_pkg` |
+| P7 — logo production | `P7_logo` |
+| P8 — card content production | `P8_content` |
+| P8.5 — hardcode/logic audit | `P8_5_hardcode` |
+| P9 — layout fill | `P9_layout` |
+| P10 — Validator 1 | `P10_validator1` |
+| P10.5 — Validator 2 | `P10_5_validator2` |
+| P10.7 — red team cards | `P10_7_RED_TEAM` |
+| P11 — render six PNGs | `P11_render` |
+| P12 — final audit (paying-customer gate) | `P12_final_audit` |
+| Incident post-check | `P_INCIDENT_POSTCHECK` |
+| DB index | `P_DB_INDEX` |
 
 ## The 33 phases at a glance
 

@@ -1,11 +1,11 @@
 ---
 schema_version: 1
-description: Principles inherited from Anthropic's "Harness design for long-running apps" and Skills design guidance, mapped to equiforge's concrete files. These are the foundation the Anamnesis Pattern (references/anamnesis_pattern.md) builds on top of. Read this when extending the harness; cross-check that any change still respects these inherited contracts.
+description: Principles inherited from Anthropic's "Harness design for long-running apps" and Skills design guidance, mapped to Anamnesis Research's concrete files. These are the foundation the Anamnesis Pattern (references/anamnesis_pattern.md) builds on top of. Read this when extending the harness; cross-check that any change still respects these inherited contracts.
 ---
 
 # Inherited principles
 
-This file collects the principles equiforge inherits from Anthropic's harness and skill design guidance. These are not equiforge's own contribution — they are the foundation the **Anamnesis Pattern** (`references/anamnesis_pattern.md`) builds on. The pattern is the project's distinctive contribution; these principles are the prerequisites.
+This file collects the principles Anamnesis Research inherits from Anthropic's harness and skill design guidance. These are not Anamnesis Research's own contribution — they are the foundation the **Anamnesis Pattern** (`references/anamnesis_pattern.md`) builds on. The pattern is the project's distinctive contribution; these principles are the prerequisites.
 
 If you are extending the harness, read both files: this one to know what existing contract you must not break, and `anamnesis_pattern.md` to know what active feedback loop you must preserve.
 

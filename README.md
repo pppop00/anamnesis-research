@@ -6,7 +6,7 @@ keywords: Anamnesis Research, Anamnesis Pattern, agent institutional memory, clo
 
 > **An equity-research harness built on the Anamnesis Pattern — cross-session institutional memory + scheduled adversarial review.**
 >
-> *(Internal codename / Python module: `equiforge`. Project name everywhere user-facing: Anamnesis Research.)*
+> *(Originally codenamed `equiforge` in early development; the codename is retained only as a historical field in `workflow_meta.json` and as the SQLite database name. Everything user-facing — CLI, docs, agent descriptions — is **Anamnesis Research**.)*
 
 ---
 
@@ -148,14 +148,14 @@ Full pattern definition (with anti-patterns, applicability checklist, and requir
 Anamnesis Research is a **harness-backed skill**: delivered as a skill (`SKILL.md` is the auto-trigger entry), maintained as a production harness (`HARNESS.md` is the architecture doc).
 
 ```
-anamnesis-research/                 # codename: equiforge (kept in file paths for compatibility)
+anamnesis-research/                 # anamnesis-research (originally codenamed equiforge — see workflow_meta.json)
 ├── SKILL.md                        # ★ thin skill entry — boot order, P0 gates, pointers
 ├── HARNESS.md                      # harness/architecture/CLI/tests
 ├── MEMORY.md                       # project invariants — frozen at session start
 ├── INCIDENTS.md                    # ★ append-only failure log — frozen at session start
 ├── USER.md                         # per-user preferences (gitignored; copy from .template)
 ├── workflow_meta.json              # machine-readable phase/gate contract (33 phases)
-├── equiforge.py                    # CLI entry (codename retained as Python module name)
+├── anamnesis.py                    # CLI entry — Anamnesis Research's deterministic-phase driver
 │
 ├── .claude/                        # Claude Code project-scoped configuration
 │   ├── skills/anamnesis-research/SKILL.md   # project skill mount (auto-discovery)
@@ -217,7 +217,7 @@ git clone <this-repo-url> anamnesis-research
 cd anamnesis-research
 git submodule update --init --recursive    # pull ER + EP submodules (SHA-pinned)
 pip install -r requirements.txt
-python equiforge.py init                   # build db/equity_kb.sqlite (codename retained as module)
+python anamnesis.py init                   # build db/equity_kb.sqlite from db/schema/
 cp USER.md.template USER.md                # then edit defaults
 
 # Open the project in Claude Code (or any host that auto-discovers .claude/skills/),

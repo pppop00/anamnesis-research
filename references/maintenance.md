@@ -14,7 +14,7 @@ These notes apply when **modifying the harness**, not when running it. A normal 
 If the upstream ER skill changes the template:
 
 1. The ER maintainer updates the SHA256 in `skills_repo/er/tests/test_extract_report_template.py`.
-2. Equiforge picks up the new SHA at the next `git submodule update --remote`.
+2. Anamnesis Research picks up the new SHA at the next `git submodule update --remote`.
 3. Bump the submodule SHA deliberately in a single commit; `meta/submodule_shas.json` per run records what was used.
 
 ## Palette consistency

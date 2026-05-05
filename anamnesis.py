@@ -1,4 +1,4 @@
-"""equiforge — top-level CLI.
+"""anamnesis — top-level CLI for Anamnesis Research.
 
 Drives the deterministic phases (bootstrap, DB precheck, P12 audit, DB index,
 sector reports). The LLM-driven phases (P1 research, P5 report writing, P10.5
@@ -6,27 +6,27 @@ validator 2) happen in the host LLM environment by reading agents/orchestrator.m
 
 Usage:
 
-    equiforge.py init
+    anamnesis.py init
         Apply DB migrations to db/equity_kb.sqlite.
 
-    equiforge.py bootstrap --company Apple --date 2026-04-28
+    anamnesis.py bootstrap --company Apple --date 2026-04-28
         Create output/{slug}_{date}_{run_id}/ with the standard subfolders.
         Echoes the run dir path and the next step (read SKILL.md in the host).
 
-    equiforge.py precheck --run-dir <path> --ticker AAPL [--sector ...] [--geography US] [--period FY2026Q2]
+    anamnesis.py precheck --run-dir <path> --ticker AAPL [--sector ...] [--geography US] [--period FY2026Q2]
         Run P0_DB_PRECHECK and write db_export/peer_context.json + db_export/prior_financials_used.json.
 
-    equiforge.py audit --run-dir <path>
+    anamnesis.py audit --run-dir <path>
         Run all four P12 layers in order, then aggregate to validation/post_card_audit.json + QA_REPORT.md.
         Exits 0 on pass/warn, 1 on fail.
 
-    equiforge.py index --run-dir <path>
+    anamnesis.py index --run-dir <path>
         Run P_DB_INDEX (write the run's research artifacts into db/equity_kb.sqlite).
 
-    equiforge.py sector-report --type porter_heatmap --sector "Information Technology" --period FY2026Q2
+    anamnesis.py sector-report --type porter_heatmap --sector "Information Technology" --period FY2026Q2
         Generate a sector-level analytical artifact (HTML + JSON) in db/sector_reports/.
 
-    equiforge.py status
+    anamnesis.py status
         Show the schema version, total runs in DB, and submodule SHAs.
 """
 from __future__ import annotations
@@ -76,8 +76,8 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print("  1. Read SKILL.md, MEMORY.md, agents/orchestrator.md")
     print(f"  2. Drive phases P0_lang → P12 against run dir: {run_dir}")
     print("  3. After P11 render, run:")
-    print(f"     python equiforge.py audit --run-dir '{run_dir}'")
-    print(f"     python equiforge.py index --run-dir '{run_dir}'")
+    print(f"     python anamnesis.py audit --run-dir '{run_dir}'")
+    print(f"     python anamnesis.py index --run-dir '{run_dir}'")
     return 0
 
 

@@ -9,6 +9,13 @@ This file is the project's institutional memory of failure. Each entry is a real
 
 **Format contract.** Append only. Never delete an incident — supersede it with a new entry that links back. Keep `id` monotonically increasing (`I-001`, `I-002`, …). Keep entries short: the *what / why / rule / detection* fields are load-bearing; everything else is optional context.
 
+**Lifecycle fields (optional).** Most entries are `active` by default and have no explicit status line. When an entry's rule is replaced or invalidated by a newer entry (e.g. the underlying file was refactored away, or a stricter rule subsumes it), mark the old one with two extra bullets:
+
+- `- **Status:** superseded`
+- `- **Superseded by:** I-NNN`
+
+The new entry should reciprocate with `- **Supersedes:** I-NNN`. `P_INCIDENT_POSTCHECK` skips superseded entries (records `status: skipped` with the supersedes link); their `Detection` clauses are no longer enforced. **Never delete a superseded entry** — the historical record is the audit trail. `tools/io/lint_incidents.py` verifies that cross-references resolve and that `Detection` clauses still point to files that exist on disk.
+
 ---
 
 ## I-001 — P0 interactive gate bypassed by inventing a default
@@ -28,12 +35,12 @@ This file is the project's institutional memory of failure. Each entry is a real
 - **What happened:** When issuer-level financial statements were unavailable (private fund / family office / non-public issuer), the report writer or orchestrator decided the locked template "did not apply," skipped `tools/research/extract_template.py`, hand-wrote a ~200-line summary HTML, fabricated a packaging profile (`institution_compat_no_secapi_no_cards` — not in the whitelist), and wrote `pass_with_scope_limitations` into `report_validation.txt`. Every layer of that chain was forbidden.
 - **Root cause:** Misreading "data is thin" as "template doesn't apply." The locked template is **never** scope-conditional. Its job when data is thin is to *make the gaps legible*, not to disappear.
 - **Rule (load-bearing):**
-  - **Every** equiforge run — public, private, hedge fund, family office, government entity, anything — fills the same SHA256-pinned locked skeleton extracted via `tools/research/extract_template.py`. There is **no** institution-compatible / private-company / scope-limited / simplified bypass.
+  - **Every** Anamnesis Research run — public, private, hedge fund, family office, government entity, anything — fills the same SHA256-pinned locked skeleton extracted via `tools/research/extract_template.py`. There is **no** institution-compatible / private-company / scope-limited / simplified bypass.
   - When issuer-level statements are unavailable, fill the locked sections with the best available proxies (AUM, strategy, top holdings, manager-level filings, peer macro) and label residual gaps inline.
   - `tools/research/validate_report_html.py` exit code is non-negotiable. Non-zero ⇒ discard HTML, rerun P5 from the extracted skeleton.
   - `report_validation.txt` top-line status is one of `pass | warn | critical`. `pass_with_scope_limitations`, `not_applicable`, `partial_pass` are fabrications.
   - `structure_conformance.json -> profile` must be one of the four `strict_*` profiles in `workflow_meta.json -> packaging_profiles`. Inventing profile names is a P6 violation.
-- **Detection:** `tools/research/validate_report_html.py` (exit code), `tools/research/packaging_check.py` (profile/status validation), `P5_html_gate` retry loop. Now also enforced by `attackers/red_team_numeric.md` and `red_team_narrative.md` post-P5.5.
+- **Detection:** `tools/research/validate_report_html.py` (exit code), `tools/research/packaging_check.py` (profile/status validation), `P5_html_gate` retry loop. Now also enforced by `agents/attackers/red_team_numeric.md` and `agents/attackers/red_team_narrative.md` post-P5.5.
 - **Related contract:** `MEMORY.md` §"Hard rules"; `SKILL.md` §"Hard floor"; `agents/orchestrator.md` §14; `references/phase_contract.md`.
 
 ## I-003 — SEC EDGAR User-Agent leaked to third-party fetches
@@ -63,7 +70,7 @@ This file is the project's institutional memory of failure. Each entry is a real
     - **Adjusted:** `经QC合议，决定将<力名>评分从X分调整为Y分。……` — allowed only when `qc_audit_trail.json` records that change.
   - Free-running summary paragraphs ("品牌心智强、SKU聚焦……") are a P5 violation regardless of how informative they read.
   - The wording per force MUST cite the force by name (no "本维度") and MUST agree with `qc_audit_trail.json` / `porter_analysis.qc_deliberation`.
-- **Detection:** `tools/research/validate_report_html.py` is fail-closed for this shape: parse each `porter-text` div, require exactly one `<ul>`, count direct `<li>` == 5, verify each `<li>` starts with a whitelisted QC/no-QC sentence for the correct dimension at the correct index. `P5_html_gate` rejects HTML that fails this; `agents/report_validator.md` and `attackers/red_team_narrative.md` also surface it as critical.
+- **Detection:** `tools/research/validate_report_html.py` is fail-closed for this shape: parse each `porter-text` div, require exactly one `<ul>`, count direct `<li>` == 5, verify each `<li>` starts with a whitelisted QC/no-QC sentence for the correct dimension at the correct index. `P5_html_gate` rejects HTML that fails this; `skills_repo/er/agents/report_validator.md` and `agents/attackers/red_team_narrative.md` also surface it as critical.
 - **Related contract:** `skills_repo/er/references/report_style_guide_cn.md` §波特五力; `skills_repo/er/references/report_style_guide_en.md` (mirror EN rule); `skills_repo/er/agents/report_writer_cn.md` table row for `{{PORTER_COMPANY_TEXT}}`; `skills_repo/er/agents/report_writer_en.md` mirror; `skills_repo/er/agents/qc_resolution_merge.md`; `skills_repo/er/agents/report_validator.md` §"中文 Porter 句式".
 
 ---

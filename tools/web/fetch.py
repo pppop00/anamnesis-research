@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-DEFAULT_UA = "equiforge/1.0 (https://example.invalid/equiforge)"
+DEFAULT_UA = "AnamnesisResearch/1.0 (https://example.invalid/anamnesis-research)"
 
 
 def fetch(url: str, user_agent: str = DEFAULT_UA, timeout: float = 20.0) -> str:

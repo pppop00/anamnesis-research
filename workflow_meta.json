@@ -6,12 +6,13 @@
   "phases": [
     {
       "id": "P_INCIDENT_PRECHECK",
-      "produces": ["meta/run.jsonl:incident_precheck.acknowledged"],
+      "produces": ["meta/run.jsonl:incident_precheck.acknowledged", "meta/run.jsonl:incident_precheck.skipped"],
       "blocking": true,
       "interactive": false,
       "parallelism": "sequential",
       "inline": true,
-      "executor_note": "Orchestrator reads INCIDENTS.md end-to-end before P0_intent. For each entry I-NNN it appends an incident_precheck.acknowledged event to meta/run.jsonl with the incident id and a one-line acknowledgement. Novel-looking matches against the current target (e.g. private-fund target → I-002) require a stricter posture in downstream phases.",
+      "tool": "tools/io/lint_incidents.py",
+      "executor_note": "Orchestrator first runs tools/io/lint_incidents.py (exit 0 required — non-zero is a release blocker because the institutional log itself has drifted). Then reads INCIDENTS.md end-to-end before P0_intent. For each entry I-NNN it appends an event to meta/run.jsonl: `incident_precheck.acknowledged` for active entries (default), `incident_precheck.skipped` for entries with Status: superseded (carries superseded_by pointer instead of an ack). Novel-looking matches against the current target (e.g. private-fund target → I-002) require a stricter posture in downstream phases. Superseded entries do not raise the bar — their successor does.",
       "reads": ["INCIDENTS.md"]
     },
     {
@@ -380,7 +381,7 @@
       "parallelism": "sequential",
       "inline": true,
       "runs_after": "P12_final_audit",
-      "executor_note": "Orchestrator re-reads INCIDENTS.md and confirms each entry's detection signal is green for this run. Output JSON has one entry per incident with status: pass | flagged plus evidence path. flagged blocks P_DB_INDEX and surfaces to user — a flagged post-check on a known incident means the harness shipped a relapse.",
+      "executor_note": "Orchestrator re-reads INCIDENTS.md and confirms each active entry's detection signal is green for this run. Output JSON has one entry per incident with status: pass | flagged | skipped plus evidence path; skipped is for entries marked Status: superseded (audit trail only, never blocks). flagged blocks P_DB_INDEX and surfaces to user — a flagged post-check on a known incident means the harness shipped a relapse.",
       "reads": ["INCIDENTS.md"],
       "on_flagged": "block P_DB_INDEX; surface to user with paths to the flagged incident's detection signal"
     },

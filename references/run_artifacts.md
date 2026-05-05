@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-description: What an equiforge run produces on disk. Read this when you need to know which subfolder gets which artifact, or when validating a finished run dir.
+description: What an Anamnesis Research run produces on disk. Read this when you need to know which subfolder gets which artifact, or when validating a finished run dir.
 ---
 
 # Run-dir layout

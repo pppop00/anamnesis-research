@@ -1,11 +1,11 @@
 ---
 schema_version: 1
-description: How equiforge reuses prior runs across quarters and across peers in the same sector. Read this when entering P0_DB_PRECHECK or interpreting peer/macro short-circuits.
+description: How Anamnesis Research reuses prior runs across quarters and across peers in the same sector. Read this when entering P0_DB_PRECHECK or interpreting peer/macro short-circuits.
 ---
 
 # Cross-quarter / cross-company reuse
 
-equiforge's database is cumulative. A run for Apple in 2026Q3 should not re-collect Apple's 2026Q1 financials from scratch, and it should be cross-checkable against Samsung if Samsung is in the DB.
+Anamnesis Research's database is cumulative. A run for Apple in 2026Q3 should not re-collect Apple's 2026Q1 financials from scratch, and it should be cross-checkable against Samsung if Samsung is in the DB.
 
 ## P0_DB_PRECHECK — what runs before P1
 

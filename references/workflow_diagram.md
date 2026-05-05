@@ -1,9 +1,9 @@
 ---
 schema_version: 1
-description: Visual diagram of the equiforge 33-phase pipeline. Shows the incident-loop bracket, P0 gates, parallel research, QC peers, red-team attackers, P12 audit, and the dual-gate (P12 + postcheck) before P_DB_INDEX. Source-of-truth for sequencing remains workflow_meta.json — this diagram is a reading aid, not a contract.
+description: Visual diagram of the Anamnesis Research 33-phase pipeline. Shows the incident-loop bracket, P0 gates, parallel research, QC peers, red-team attackers, P12 audit, and the dual-gate (P12 + postcheck) before P_DB_INDEX. Source-of-truth for sequencing remains workflow_meta.json — this diagram is a reading aid, not a contract.
 ---
 
-# equiforge — workflow diagram
+# Anamnesis Research — workflow diagram
 
 **Reading rules**
 

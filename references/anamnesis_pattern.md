@@ -1,15 +1,15 @@
 ---
 schema_version: 1
-description: The Anamnesis Pattern — a methodology for building agent harnesses that learn from their own past failures across sessions. Pattern definition, CFRV cycle, outer + inner loops, adversarial review axis, applicability examples beyond equity research, anti-patterns. equiforge is one implementation; the pattern is the contribution.
+description: The Anamnesis Pattern — a methodology for building agent harnesses that learn from their own past failures across sessions. Pattern definition, CFRV cycle, outer + inner loops, adversarial review axis, applicability examples beyond equity research, anti-patterns. Anamnesis Research is one implementation; the pattern is the contribution.
 ---
 
 # The Anamnesis Pattern
 
 > *Anamnesis* (Greek ἀνάμνησις, "recollection") — Plato's term for the soul calling to mind knowledge held from prior lives. The metaphor: every new agent context window is amnesiac. The pattern lets the agent recollect, every session, what it learned the hard way in every previous one.
 
-This file defines a **methodology** for building production agent harnesses, abstracted away from any one application. equiforge is one implementation (applied to equity research); the pattern is the reusable contribution. Read this if you are designing a new harness — for legal research, medical diagnosis, code review, support triage, or any pipeline where failures are expensive enough to be worth permanent rules.
+This file defines a **methodology** for building production agent harnesses, abstracted away from any one application. Anamnesis Research is one implementation (applied to equity research); the pattern is the reusable contribution. Read this if you are designing a new harness — for legal research, medical diagnosis, code review, support triage, or any pipeline where failures are expensive enough to be worth permanent rules.
 
-For why the pattern exists in equiforge specifically, see `INCIDENTS.md`. For inherited harness/skill principles (Anthropic's foundational guidance) that this pattern *builds on top of*, see `references/inherited_principles.md`.
+For why the pattern exists in Anamnesis Research specifically, see `INCIDENTS.md`. For inherited harness/skill principles (Anthropic's foundational guidance) that this pattern *builds on top of*, see `references/inherited_principles.md`.
 
 ## The problem the pattern solves
 
@@ -42,7 +42,7 @@ flowchart LR
       READ["3 · Read<br/>pre-check phase<br/>ack each accumulated rule"]
       READ --> WORK[phase work<br/>matched-incident phases<br/>raise the bar]
       WORK --> ATTACK[adversarial review<br/>scheduled red-team gates]
-      ATTACK --> AUDIT[domain-specific audit<br/>e.g. P12 in equiforge]
+      ATTACK --> AUDIT[domain-specific audit<br/>e.g. P12 in Anamnesis Research]
       AUDIT --> VERIFY["4 · Verify<br/>post-check phase<br/>each rule pass | flagged"]
       VERIFY -->|flagged| BLOCK([❌ BLOCK delivery])
       VERIFY -->|pass| DELIVER([✅ deliver])
@@ -73,11 +73,13 @@ When a failure happens, a human writes one append-only entry. The entry has a fi
 
 Curation is the **throttle that prevents memory inflation**. Auto-logged systems pile up noise: every warn becomes an entry, every minor variance becomes a rule, and the prompt eventually drowns. Human curation forces the question *"is this worth being read every session forever?"* — almost everything fails that bar, and that is the point.
 
-In equiforge: `/log-incident` slash command. The model drafts; the human confirms. Backed by `tools/io/log_incident.py --collect` which produces a digest of the latest run for the human to review.
+In Anamnesis Research: `/log-incident` slash command. The model drafts; the human confirms. Backed by `tools/io/log_incident.py --collect` which produces a digest of the latest run for the human to review.
+
+Curated entries also have a **lifecycle**. Most entries are `active` (default, no explicit status). When a rule is replaced — the underlying file was refactored away, a stricter rule subsumes it, or the failure mode is no longer reachable — mark the old entry `Status: superseded` and `Superseded by: I-NNN`; the new entry reciprocates with `Supersedes: I-NNN`. The supersede graph is bidirectional and verified by `tools/io/lint_incidents.py` (which also checks monotonic ids and that `Detection:` clauses still point at files that exist on disk). Superseded entries are **never deleted** — they remain in the file as audit trail and as a reminder that the harness *used to* be vulnerable here. The post-check phase records them as `status: "skipped"` rather than re-checking their detection signal.
 
 ### 2. Freeze — append-only, frozen at boot, not retrieved
 
-The entry is appended to a single source-of-truth file (`INCIDENTS.md` in equiforge). At session boot, the entire file is loaded **verbatim** into the system prompt alongside the project's other invariants (`MEMORY.md`). It is not chunked, embedded, or retrieved on demand. The frozen prompt is captured to `meta/system_prompt.frozen.txt` so audits can replay.
+The entry is appended to a single source-of-truth file (`INCIDENTS.md` in Anamnesis Research). At session boot, the entire file is loaded **verbatim** into the system prompt alongside the project's other invariants (`MEMORY.md`). It is not chunked, embedded, or retrieved on demand. The frozen prompt is captured to `meta/system_prompt.frozen.txt` so audits can replay.
 
 Why frozen and not retrieved:
 
@@ -95,19 +97,19 @@ Every run's first phase reads INCIDENTS.md end-to-end and writes one acknowledge
 
 When the run reaches a phase whose `Phase` field matches an accumulated incident, the agent **raises the bar** on that surface — strict reading of the contract, no shortcuts, additional cross-checks. The acknowledgement is written before phase work begins; resume-from-log treats a fresh session as needing fresh acks (rules may have been added between sessions).
 
-In equiforge: `P_INCIDENT_PRECHECK` runs before `P0_intent`.
+In Anamnesis Research: `P_INCIDENT_PRECHECK` runs before `P0_intent`.
 
 ### 4. Verify — mandatory post-check phase, release-blocking
 
-Before delivery, the run re-reads INCIDENTS.md and confirms each entry's detection signal is green. Output is one entry per incident:
+Before delivery, the run re-reads INCIDENTS.md and confirms each *active* entry's detection signal is green. Output is one entry per incident:
 
 ```json
-{"id": "I-NNN", "status": "pass | flagged", "evidence": "<file path that proves it>"}
+{"id": "I-NNN", "status": "pass | flagged | skipped", "evidence": "<file path that proves it>"}
 ```
 
-Any `flagged` entry **blocks delivery**. Not a warning, not a yellow flag — a hard halt that surfaces the relapse to the user with the exact path that violates the rule. Relapse on a known failure is treated as more serious than a brand-new bug, because the harness already knew about it and the run still failed to comply.
+`skipped` is reserved for entries marked `Status: superseded` — they remain in the file as audit history but the post-check no longer enforces them. Any `flagged` entry **blocks delivery**. Not a warning, not a yellow flag — a hard halt that surfaces the relapse to the user with the exact path that violates the rule. Relapse on a known failure is treated as more serious than a brand-new bug, because the harness already knew about it and the run still failed to comply.
 
-In equiforge: `P_INCIDENT_POSTCHECK` blocks `P_DB_INDEX`. A flagged post-check means the database is not written for that run. Declared in `workflow_meta.json` as `requires: [domain_audit, P_INCIDENT_POSTCHECK]` so machine-readable runners cannot bypass it.
+In Anamnesis Research: `P_INCIDENT_POSTCHECK` blocks `P_DB_INDEX`. A flagged post-check means the database is not written for that run. Declared in `workflow_meta.json` as `requires: [domain_audit, P_INCIDENT_POSTCHECK]` so machine-readable runners cannot bypass it.
 
 ## The 5th axis — scheduled adversarial review
 
@@ -128,7 +130,7 @@ These are **distinct** from quality-control peer review:
 
 A clean attacker output (zero findings) is a valid result. The harness must not pressure attackers to manufacture issues. Conversely, a draft that dismisses an attacker's critical finding without writing why is release-blocking.
 
-In equiforge: `P5_7_RED_TEAM` after the report draft, `P10_7_RED_TEAM` before card render.
+In Anamnesis Research: `P5_7_RED_TEAM` after the report draft, `P10_7_RED_TEAM` before card render.
 
 ## How this differs from other "agent memory" designs
 
@@ -181,13 +183,17 @@ A conservative path: build the harness without the pattern first. Once you have 
 2. **Retrieval-based incident lookup** (RAG over INCIDENTS.md). Defeats the "agent doesn't know what it doesn't know" guarantee.
 3. **Soft post-check** (warning instead of block). Defeats enforcement. Within months developers learn to ignore the warnings.
 4. **Adversarial agents that vote with QC peers.** Conflates falsification with consensus. Both jobs degrade.
-5. **Editing past INCIDENTS entries.** Defeats append-only auditability. Supersede with a new entry that links back.
+5. **Editing past INCIDENTS entries.** Defeats append-only auditability. The right move is to mark the old entry `Status: superseded` and `Superseded by: I-NNN`, then write the new entry with `Supersedes: I-NNN`. Both pointers are required — a one-sided supersede silently breaks the lint and rots into ambiguity.
+
+6. **Letting `Detection:` clauses rot.** Files referenced in a detection clause get renamed or deleted during refactors; the post-check then "passes" by quietly looking at nothing. `tools/io/lint_incidents.py` (run at pre-check) catches this — every active entry's detection-clause paths must still exist on disk. Without this lint, append-only is a virtue that turns into a liability after the second or third refactor.
 6. **Skipping pre-check on resume.** Defeats freshness — INCIDENTS.md may have been updated between the original session and the resume. Always re-fire pre-check on a fresh session boot.
 7. **Burying the post-check inside the audit phase.** They are different jobs. Audit checks "is this run's data correct"; post-check checks "did this run relapse on a known failure". Combining them lets a clean audit hide a relapse.
 
+(Anti-patterns 5 and 6 above are renumbered relative to earlier drafts after lifecycle hygiene was made explicit. The list ends at 7 today; new anti-patterns should append.)
+
 ## Required files (the pattern's footprint)
 
-The pattern requires (with equiforge-specific filenames in parentheses):
+The pattern requires (with Anamnesis-Research-specific filenames in parentheses):
 
 | Concern | File / surface | Frequency |
 |---|---|---|
@@ -198,6 +204,7 @@ The pattern requires (with equiforge-specific filenames in parentheses):
 | Adversarial agent — numeric | `agents/attackers/red_team_numeric.md` | one per project (parameterised by gate) |
 | Adversarial agent — narrative | `agents/attackers/red_team_narrative.md` | one per project (parameterised by gate) |
 | Curation entry-point | `/log-incident` slash command + collector | one per project |
+| Lifecycle lint | `tools/io/lint_incidents.py` — monotonic ids, supersede graph, detection-path freshness | one per project; runs at pre-check |
 | Machine-readable phase contract | declares `requires: [audit, post_check]` for delivery | one per project |
 | Frozen prompt audit trail | `meta/system_prompt.frozen.txt` (per run) | one per run |
 | Run event log (append-only) | `meta/run.jsonl` | one per run |

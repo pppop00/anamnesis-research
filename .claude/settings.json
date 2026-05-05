@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/inject_incidents.py"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/inject_incidents.py\""
           }
         ]
       }

@@ -1,4 +1,4 @@
-"""equiforge.py — top-level CLI subcommand smoke tests."""
+"""anamnesis.py — top-level CLI subcommand smoke tests."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CLI = PROJECT_ROOT / "equiforge.py"
+CLI = PROJECT_ROOT / "anamnesis.py"
 
 
 def _run(*args, cwd: Path | None = None) -> subprocess.CompletedProcess:

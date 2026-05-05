@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 '/Users/pppop/Desktop/Projects/Skills/anamnesis-research/.codex/hooks/inject_incidents.py'"
+            "command": "python3 .codex/hooks/inject_incidents.py"
           }
         ]
       }

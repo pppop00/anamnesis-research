@@ -13,27 +13,10 @@ description: >-
   auditable HTML report plus 6 PNG cards plus database rows that ad-hoc answers cannot.
 ---
 
-# Anamnesis Research (project-scoped skill mount)
+# Anamnesis Research — project-mount stub (Claude Code)
 
-This file is the **project-scoped skill entry**. It exists so that opening this repository in Claude Code (or any host that scans `.claude/skills/`) auto-discovers Anamnesis Research from a deterministic location. The canonical, full-detail `SKILL.md` is at the repository root — read it now. (Internal codename / Python module: `equiforge`.)
+This file exists **only** so Claude Code's project-scoped skill discovery (`.claude/skills/`) finds and triggers Anamnesis Research from a deterministic location. It has no body content of its own — the canonical skill is at the repository root.
 
-## Boot order — read in this order, every session
+**Read `/SKILL.md` (the repo root) now and follow its boot order from there.** Do not paraphrase from this file; it intentionally has no procedure. The frontmatter above is kept in sync with root `SKILL.md` by `tests/test_skill_mount_parity.py`.
 
-1. **`SKILL.md`** (repo root) — full skill body, P0 gates, hard floor, references map.
-2. **`MEMORY.md`** (repo root) — project invariants, frozen at session start.
-3. **`INCIDENTS.md`** (repo root) — institutional memory of past failures, frozen at session start. Read end-to-end before any phase work.
-4. **`USER.md`** (repo root, gitignored) — per-user sticky preferences. Skip if absent.
-5. **`workflow_meta.json`** — machine-readable phase + gate contract.
-6. **`agents/orchestrator.md`** — runtime brief; drives the rest of the run.
-
-Do not pre-load `skills_repo/{er,ep}/agents/*.md`. Open them lazily when you delegate.
-
-## Why this file exists separately from the root SKILL.md
-
-Claude Code's skill discovery only auto-loads files under `~/.claude/skills/` or `<project>/.claude/skills/`. The repo's canonical `SKILL.md` at the root is human-readable but not auto-discovered. This thin mount file gives the host a stable discovery point while keeping the canonical source at the root (one place to edit, no symlink fragility on cross-platform clones).
-
-When a contributor edits the skill description or boot order, they edit **both** this file and the root `SKILL.md` and keep them in sync. The harness CI (`tools/research/validate_workflow_meta.py`) does not yet enforce this — it is a manual checklist item in `references/maintenance.md`.
-
-## What this skill produces
-
-One run directory at `output/{Company}_{Date}_{RunID}/` containing the HTML research report, six PNG cards, the QA report, validation JSONs, and the database rows that were written. See `references/run_artifacts.md` for the full layout.
+When editing the skill, edit root `SKILL.md`. The frontmatter on this stub is mirrored — change both descriptions in the same commit.

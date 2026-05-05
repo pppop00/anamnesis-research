@@ -1,6 +1,6 @@
 # Anamnesis Research — harness architecture
 
-**Anamnesis Research** is delivered as a skill (entry: `SKILL.md`, slug: `anamnesis-research`) and maintained as a production harness (this file). The Python module / internal codename is `equiforge` — that name persists in file paths (`equiforge.py`, `tools/`, output paths) for compatibility, but the public name of the project is **Anamnesis Research**.
+**Anamnesis Research** is delivered as a skill (entry: `SKILL.md`, slug: `anamnesis-research`) and maintained as a production harness (this file). It was originally codenamed `equiforge` during early development; that codename is now retained only as a historical `"codename"` field in `workflow_meta.json` and as the namespace prefix for the SQLite database (`db/equity_kb.sqlite`). Everything user-facing — CLI, docs, agent descriptions — uses the public name, **Anamnesis Research**.
 
 The skill side tells the model *what to do*; the harness side defines *how the run is executed, persisted, audited, and resumed*. If you are running the pipeline, read `SKILL.md`. If you are extending the harness — adding a tool, changing the DB schema, wiring a new audit layer — start here.
 
@@ -27,14 +27,14 @@ The split exists because the skill anatomy spec only allows `name` + `descriptio
 ## Repository layout
 
 ```
-equiforge/
+anamnesis-research/
 ├── SKILL.md                # ★ canonical skill entry — thin, strict, boot order
 ├── HARNESS.md              # this file — harness/architecture/CLI/tests
 ├── MEMORY.md               # project invariants, frozen at session start
 ├── INCIDENTS.md            # institutional failure log, frozen at session start, append-only
 ├── USER.md.template        # copy → USER.md (gitignored), sticky preferences
 ├── workflow_meta.json      # machine-readable phase + gate contract
-├── equiforge.py            # CLI entry (init, status, etc.)
+├── anamnesis.py            # CLI entry (init, status, etc.)
 │
 ├── .claude/                # Claude Code project-scoped configuration
 │   ├── skills/anamnesis-research/SKILL.md   # project skill mount (auto-discovery)
@@ -42,7 +42,7 @@ equiforge/
 │   ├── hooks/inject_incidents.py   # injects INCIDENTS reminder on research-style prompts
 │   └── commands/log-incident.md    # /log-incident slash command spec
 │
-├── agents/                 # equiforge-owned briefs ONLY (no symlinks to upstream)
+├── agents/                 # Anamnesis-Research-owned briefs ONLY (no symlinks to upstream)
 │   ├── orchestrator.md
 │   ├── intent_resolver.md
 │   ├── language_gate.md / sec_email_gate.md / palette_gate.md
@@ -87,11 +87,11 @@ equiforge/
 
 ```bash
 # First-time setup
-git clone <repo> equiforge
-cd equiforge
+git clone <repo> anamnesis-research
+cd anamnesis-research
 git submodule update --init --recursive
 pip install -r requirements.txt
-python equiforge.py init                # builds db/equity_kb.sqlite from db/schema/
+python anamnesis.py init                # builds db/equity_kb.sqlite from db/schema/
 cp USER.md.template USER.md             # then edit defaults
 
 # Pre-flight
@@ -160,20 +160,20 @@ pytest -q                                  # must be green
 git commit -m "bump er submodule to <short-sha>"
 ```
 
-If the upstream ER skill changes the locked HTML template, the upstream maintainer updates the SHA256 in `skills_repo/er/tests/test_extract_report_template.py`. Equiforge picks it up on the next bump.
+If the upstream ER skill changes the locked HTML template, the upstream maintainer updates the SHA256 in `skills_repo/er/tests/test_extract_report_template.py`. Anamnesis Research picks it up on the next bump.
 
-### Why root `agents/` is equiforge-only (no symlinks to upstream)
+### Why root `agents/` is Anamnesis-Research-only (no symlinks to upstream)
 
-`agents/` contains **only** equiforge's own orchestration briefs (`orchestrator`, `intent_resolver`, the four gate agents, `cross_validator`, `post_card_auditor`). It does **not** symlink or alias the upstream `skills_repo/er/agents/*` and `skills_repo/ep/agents/*` files. Why:
+`agents/` contains **only** Anamnesis Research's own orchestration briefs (`orchestrator`, `intent_resolver`, the four gate agents, `cross_validator`, `post_card_auditor`). It does **not** symlink or alias the upstream `skills_repo/er/agents/*` and `skills_repo/ep/agents/*` files. Why:
 
 - **One canonical path per agent.** `meta/run.jsonl` and audit artifacts always log the real path. No "did this come from the symlink or the submodule?" ambiguity.
 - **Stale-symlink risk on submodule bumps.** Renames upstream silently break aliases while `ls agents/` still looks healthy. Since nothing reads the aliases, the breakage stays invisible until a live phase fails.
-- **Semantic separation.** `agents/` is for things equiforge owns and can change. `skills_repo/{er,ep}/agents/` is upstream territory we pin and consume.
+- **Semantic separation.** `agents/` is for things Anamnesis Research owns and can change. `skills_repo/{er,ep}/agents/` is upstream territory we pin and consume.
 - **Future-proof for `agents/openai.yaml`.** When we add UI/runtime metadata at `agents/openai.yaml`, the directory should not also contain dozens of upstream-owned briefs — the two concerns don't belong together.
 
 `workflow_meta.json` and `agents/orchestrator.md` reference upstream agents by their **real submodule path** (`skills_repo/er/agents/financial_data_collector.md`, `skills_repo/ep/agents/logo-production-agent.md`, etc.). The path is the audit surface — keep it honest.
 
-Symlinking back into `agents/` would only be justified if some harness or environment could only read from a single flat directory. Equiforge has no such constraint, so we don't pay the cost.
+Symlinking back into `agents/` would only be justified if some harness or environment could only read from a single flat directory. Anamnesis Research has no such constraint, so we don't pay the cost.
 
 ## Incident loop
 
@@ -218,7 +218,7 @@ The hook is a safety net, not a substitute. The orchestrator must still read `IN
 
 - **No skill self-improvement / DSPy / GEPA optimizer.** Auditability beats agility. Every numeric in a card is traceable to a source JSON to a frozen system prompt to a submodule SHA.
 - **No code-execution sandbox.** Everything is a registered tool under `tools/`. The LLM cannot exec arbitrary Python.
-- **No multi-tenant routing.** Single user, local SQLite, single process. Run two equiforges in two terminals if you want concurrency.
+- **No multi-tenant routing.** Single user, local SQLite, single process. Run two Anamnesis Research instances in two terminals if you want concurrency.
 - **No streaming UI.** CLI in, files out. The output folder is the deliverable.
 
 ## When to update what
@@ -237,7 +237,7 @@ The hook is a safety net, not a substitute. The orchestrator must still read `IN
 | Hook trigger phrases (when the UserPromptSubmit reminder fires) | `.claude/hooks/inject_incidents.py` `TRIGGER_PATTERNS` |
 | Slash commands | `.claude/commands/<name>.md` (spec) + `tools/io/<name>.py` (backend, if needed) |
 | DB schema | new `db/schema/00X_*.sql` + bump `PRAGMA user_version` + run migration tests |
-| Locked HTML template | upstream `skills_repo/er` only — equiforge bumps the submodule |
+| Locked HTML template | upstream `skills_repo/er` only — Anamnesis Research bumps the submodule |
 | Architecture / CLI / dev workflow | this file (`HARNESS.md`) |
 | The Anamnesis Pattern (methodology, generalised) | `references/anamnesis_pattern.md` |
 | Inherited principles (Anthropic harness/skill foundations) | `references/inherited_principles.md` |
