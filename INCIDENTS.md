@@ -88,6 +88,53 @@ The new entry should reciprocate with `- **Supersedes:** I-NNN`. `P_INCIDENT_POS
 
 ---
 
+## I-006 — Logo transparency contract misread as white-background requirement
+
+- **Date observed:** 2026-05-07
+- **Phase:** `P7_logo` / `P11_render`
+- **What happened:** In run `Spirit_Aviation_Holdings_2026-05-07_9a1b9cdb`, the logo asset at `cards/logo/spirit_wordmark.png` was changed to an opaque white-background PNG after user feedback, and Card 1 / Card 5 were re-rendered with that white logo backing. This contradicted the EP logo-production contract, which requires a clean transparent logo asset and no white logo container.
+- **Root cause:** The operator acted on ambiguous visual feedback without first re-reading `skills_repo/ep/agents/logo-production-agent.md` and `skills_repo/ep/SKILL.md` logo rules. The workflow conflated “logo visibility/contrast problem” with “add a white background,” even though the renderer is designed to paste transparent logo assets directly onto the card background.
+- **Rule (load-bearing):** Before changing any logo background treatment, re-read the EP logo-production instructions. Final `logo_asset_path` must point to a clean transparent PNG/WEBP regenerated from an official logo reference unless the brand’s own mark intrinsically includes a filled shape. Do not add an opaque white canvas or white logo container to satisfy contrast concerns; solve contrast by using the correct transparent logo variant or by regenerating the mark cleanly.
+- **Detection:** Add a logo audit that opens `card_slots.logo_asset_path`, verifies alpha transparency exists for non-filled canvas regions, and flags opaque white-canvas logo assets unless explicitly justified as part of the official mark. For rendered cards, sample Card 1 and Card 5 logo boxes to ensure the card background remains visible around the logo rather than a pasted white rectangle.
+- **Related contract:** `skills_repo/ep/SKILL.md` §Logo convention / §2.5 Logo Production; `skills_repo/ep/agents/logo-production-agent.md` §Rules and §Quality Check; `skills_repo/ep/references/design-spec.md` §Logo Rules; `skills_repo/ep/scripts/generate_social_cards.py` `paste_logo()`, `card_1()`, `card_5()`.
+
+---
+
+## I-007 — Sector/theme research bypassed locked report and EP card format
+
+- **Date observed:** 2026-05-09
+- **Phase:** `P0_intent` / `P5_html` / `P6_pkg` / `P11_render`
+- **What happened:** In run `Stablecoin_Cross_Border_Payments_2026-05-09_78540d26`, the user asked for an industry analysis. The run invented a custom `sector_pack` path, emitted a short non-locked HTML report, and generated custom cards outside the EP renderer. The initial report failed `validate_report_html.py` with missing locked-template markers, missing required sections, missing metrics table, and line count below 500. The initial cards also had visible large blank regions.
+- **Root cause:** The orchestrator treated a sector/theme prompt as permission to bypass the formal Anamnesis report/card format instead of representing the industry as the analysis object inside the locked template. It also confused "sector topic" with "template not applicable."
+- **Rule (load-bearing):** Sector or industry research must still use the locked report skeleton and official EP card renderer unless the user explicitly requests a non-Anamnesis custom artifact. If issuer-level financials do not exist, fill the required financial, prediction, Sankey, and card fields with clearly labelled industry proxy metrics; do not invent packaging profiles such as `sector_pack`; do not claim analogous incident checks as pass.
+- **Detection:** `tools/research/validate_report_html.py` and `tools/research/packaging_check.py` must pass before card work. `tools/photo/validate_cards.py` must pass before render. Reject `structure_conformance.json -> profile` values outside the whitelisted strict profiles.
+- **Related contract:** `SKILL.md` Hard floor; `agents/orchestrator.md` P5/P6/P11; `tools/research/validate_report_html.py`; `tools/research/packaging_check.py`; `tools/photo/validate_cards.py`; `INCIDENTS.md` I-002 and I-005.
+
+---
+
+## I-008 — Waterfall / Sankey schema and Porter QC-prefix mode not enforced by validator
+
+- **Date observed:** 2026-05-15 (regression observed on runs `China_General_Nuclear_Power_2026-05-13_3fc946f7` and `NextEra_Energy_2026-05-13_2f081932`; minor latent flaws also visible in `Waste_Management_2026-05-14_e20146cf` and `ADM_2026-05-13_7e0175b5`)
+- **Phase:** `P5_html` (writer — `skills_repo/er/agents/report_writer_cn.md`, mirror EN); detection sites `P5_html_gate`, `report_validator`.
+- **What happened:** Three independent flaws in the rendered HTML, all undetected by the post-render validator:
+    1. **Porter prefix mode-mismatch.** Both runs produced `qc_audit_trail.json` (full QC ran). The contract in `skills_repo/er/agents/qc_resolution_merge.md` §134 and `skills_repo/er/agents/report_writer_cn.md` table row for `{{PORTER_COMPANY_TEXT}}` says: when QC ran the `<li>` opening MUST be `"经QC合议，..."` (zh) / `"Dual-QC deliberation..."` (en); the `"基于初稿评分，..."` / `"Per draft scoring..."` opening is reserved exclusively for fast-runs with no `qc_audit_trail.json`. Both reports nonetheless used the no-QC prefix for all 15 `<li>`s (5 forces × 3 perspectives). User-visible result: every Porter bullet read "基于初稿评分，X 议价能力为 N 分。" — readers correctly perceived this as draft/template residue.
+    2. **`waterfallData` schema mismatch.** The D3 renderer (`drawWaterfall()` in the locked template) expects `[{label, type, value, start, end}, …]` with `type ∈ {baseline, positive, negative, result}`. Both runs emitted `{label, type, value}` only (no `start`, no `end`) and used a fabricated `type` vocabulary `{start, delta, end}`. The renderer computes `Math.max(...waterfallData.flatMap(d => [d.start, d.end]))` → `NaN`; the y-scale collapses; **no bars render**. The labels (-4.1% / -1.3% / +4.0% / -1.4%) still appear because they're plotted via separate `<text>` elements, so the chart looks "halfway there" rather than blank.
+    3. **Sankey conservation violation.** Both runs declared nodes that were never wired into any link (`费用`, `税前利润`, `税费` on CGN). For interior nodes that did receive flow, inflow ≠ outflow by > 1% (CGN: `毛利润` in 242 vs out 155 — 87 RMB-B silently dropped; NextEra: `毛利润` outflow > inflow by 2.7 USD-B — phantom money). `d3-sankey` either drops the orphans silently or renders disproportionate ribbons; downstream readers cannot reconcile the income statement.
+- **Root cause:** `tools/research/validate_report_html.py` only verified the *presence* of the JS data variables (`waterfallData`, `sankeyActualData`, `sankeyForecastData`) and that the Porter `<li>` count was 5 — it did **not** validate their *schema*. Worse, the Porter prefix whitelist accepted **both** `"经QC合议..."` and `"基于初稿评分..."` openings unconditionally, regardless of whether `qc_audit_trail.json` existed on disk. The writer prompt was correct (it pairs each opening with the mode that justifies it), but the safety net let either through. This is the same family as I-004 / I-005: writer contract correct, validator silent on a slot's content shape.
+- **Rule (load-bearing):**
+    - **Porter prefix is mode-gated.** The validator MUST inspect for a sibling `qc_audit_trail.json` next to the HTML. If present (QC ran), every Porter `<li>` MUST open with `"经QC合议，..."` (zh) or `"Dual-QC deliberation..."` (en); the no-QC openings are forbidden. If absent (no-QC fast-run), every `<li>` MUST open with `"基于初稿评分，..."` / `"Per draft scoring..."`; inventing `"经QC合议..."` wording without a real trail is forbidden.
+    - **`waterfallData` schema.** Each bar MUST be `{label: str, type: "baseline"|"positive"|"negative"|"result", value: number, start: number, end: number}`. Missing `start`/`end` or any unknown `type` is fail-closed.
+    - **Sankey conservation.** Every declared node MUST appear in at least one link (orphans demoted to warnings — they render blank but don't break the chart). For every node that has both inflow and outflow, `|in − out| / max(in, out)` MUST be ≤ 1%. Larger imbalances indicate phantom or dropped flow and are fail-closed.
+    - These checks are **not bypassable for "fast-run"**: schema + conservation are independent of QC presence.
+- **Detection:** `tools/research/validate_report_html.py`:
+    - `_validate_porter_texts(soup, *, qc_ran)` (new signature) — mode-gated via `validate_html_report(..., qc_audit_trail_path=None)`, which auto-detects `html_path.parent / "qc_audit_trail.json"` when not passed.
+    - `_validate_waterfall_data(script_text)` — parses the `const waterfallData = [...]` literal via `_extract_js_literal` and enforces per-bar required fields + canonical `type` vocab.
+    - `_validate_sankey_conservation(script_text, var_name)` — parses both `sankeyActualData` and `sankeyForecastData`, flags orphans as warnings, fails on > 1% flow imbalance.
+    - Test coverage: `tests/test_validate_report_html.py::test_i007_porter_no_qc_prefix_when_qc_ran_fails`, `…_porter_qc_prefix_when_no_qc_trail_fails`, `…_waterfall_missing_start_end_fails`, `…_waterfall_good_passes`, `…_sankey_orphan_warns`, `…_sankey_conservation_violation_fails`.
+- **Related contract:** `skills_repo/er/agents/report_writer_cn.md` §`{{PORTER_COMPANY_TEXT}}` / `{{WATERFALL_JS_DATA}}` / `{{SANKEY_ACTUAL_JS_DATA}}`; `skills_repo/er/agents/qc_resolution_merge.md` §134; `skills_repo/er/references/porter_framework.md` §QC vs no-QC openings; `skills_repo/er/references/report_style_guide_cn.md` §波特五力; `INCIDENTS.md` I-004 (this entry tightens I-004's detection from "must start with whitelisted sentence" to "must start with the *correct-mode* sentence").
+
+---
+
 ## How this file is used
 
 1. **Pre-run** (`P_INCIDENT_PRECHECK`, fires before `P0_intent`): the orchestrator reads this file end-to-end. For each incident, it ensures the corresponding rule is wired into the current plan. If a rule is unclear or the incident is novel-looking for the current target, the orchestrator notes it in `meta/run.jsonl` as `incident_precheck.acknowledged`.

@@ -130,31 +130,53 @@ def _count(soup: BeautifulSoup, selector: str) -> int:
     return len(soup.select(selector))
 
 
-def _porter_li_start_ok(text: str, zh_force: str, en_force: str) -> bool:
+def _porter_li_start_ok(text: str, zh_force: str, en_force: str, *, qc_ran: bool) -> bool:
+    """Per I-004 / I-007 (anamnesis-research): the allowed opening for each
+    Porter <li> depends on whether QC actually ran (i.e. whether
+    `qc_audit_trail.json` exists alongside the report).
+
+      qc_ran=True  → only "经QC合议..." / "Dual-QC deliberation..." accepted.
+                     "基于初稿评分..." / "Per draft scoring..." is forbidden
+                     here because the writer must rewrite to QC wording in
+                     `qc_resolution_merge.md` at Phase 3.6.
+      qc_ran=False → only "基于初稿评分..." / "Per draft scoring..." accepted.
+                     Inventing "经QC合议..." wording without a real QC trail
+                     is forbidden.
+    """
     text = " ".join(text.split())
-    zh_patterns = (
-        rf"^经QC合议，维持{re.escape(zh_force)}为[1-5]分。",
-        rf"^经QC合议，决定将{re.escape(zh_force)}评分维持[1-5]分不变。",
-        rf"^经QC合议，决定将{re.escape(zh_force)}评分从[1-5]分调整为[1-5]分。",
-        rf"^基于初稿评分，{re.escape(zh_force)}为[1-5]分。",
-    )
+    if qc_ran:
+        zh_patterns = (
+            rf"^经QC合议，维持{re.escape(zh_force)}为[1-5]分。",
+            rf"^经QC合议，决定将{re.escape(zh_force)}评分维持[1-5]分不变。",
+            rf"^经QC合议，决定将{re.escape(zh_force)}评分从[1-5]分调整为[1-5]分。",
+        )
+    else:
+        zh_patterns = (
+            rf"^基于初稿评分，{re.escape(zh_force)}为[1-5]分。",
+        )
     if any(re.search(pattern, text) for pattern in zh_patterns):
         return True
 
     lower = text.lower()
     force = re.escape(en_force.lower())
-    en_patterns = (
-        rf"^dual-qc deliberation maintained (the )?{force} at [1-5]/5\.",
-        rf"^after dual-qc deliberation, (the )?{force} remains [1-5]/5\.",
-        rf"^dual-qc deliberation adjusted (the )?{force} score from [1-5] to [1-5]/5\.",
-        rf"^per draft scoring, (the )?{force} stands at [1-5]/5\.",
-    )
+    if qc_ran:
+        en_patterns = (
+            rf"^dual-qc deliberation maintained (the )?{force} at [1-5]/5\.",
+            rf"^after dual-qc deliberation, (the )?{force} remains [1-5]/5\.",
+            rf"^dual-qc deliberation adjusted (the )?{force} score from [1-5] to [1-5]/5\.",
+        )
+    else:
+        en_patterns = (
+            rf"^per draft scoring, (the )?{force} stands at [1-5]/5\.",
+        )
     return any(re.search(pattern, lower) for pattern in en_patterns)
 
 
-def _validate_porter_texts(soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+def _validate_porter_texts(soup: BeautifulSoup, *, qc_ran: bool) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
+    mode_label = "QC mode" if qc_ran else "no-QC mode"
+    expected_zh = "经QC合议..." if qc_ran else "基于初稿评分..."
 
     for panel in PORTER_PANELS:
         panel_selector = f"#porter-panel-{panel}"
@@ -183,10 +205,11 @@ def _validate_porter_texts(soup: BeautifulSoup) -> tuple[list[str], list[str]]:
             if not li_text:
                 errors.append(f"{panel_selector} .porter-text li[{idx}] is empty")
                 continue
-            if not _porter_li_start_ok(li_text, zh_force, en_force):
+            if not _porter_li_start_ok(li_text, zh_force, en_force, qc_ran=qc_ran):
                 errors.append(
-                    f"{panel_selector} .porter-text li[{idx}] must start with the whitelisted "
-                    f"QC/no-QC sentence for {zh_force}/{en_force}"
+                    f"{panel_selector} .porter-text li[{idx}] must start with the {mode_label} "
+                    f"sentence (expected zh-prefix '{expected_zh}', cf. I-004 / I-007) "
+                    f"for {zh_force}/{en_force}"
                 )
             if len(li_text) < 24:
                 warnings.append(f"{panel_selector} .porter-text li[{idx}] is very short")
@@ -256,7 +279,176 @@ def _validate_metrics_table(soup: BeautifulSoup) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def validate_html_report(html_path: Path, skeleton_path: Path | None = None) -> dict[str, Any]:
+WATERFALL_VALID_TYPES = frozenset({"baseline", "positive", "negative", "result"})
+
+
+def _extract_js_literal(script_text: str, var_name: str) -> Any | None:
+    """Extract `const <var_name> = <literal>;` and return parsed JSON.
+
+    The locked template emits JS object/array literals that happen to be
+    valid JSON (quoted keys). Anything else (function calls, computed
+    values, references) returns None and the per-shape validator emits a
+    targeted error.
+    """
+    pattern = rf"\bconst\s+{re.escape(var_name)}\s*=\s*([\[\{{].*?)\s*;\s*$"
+    matches = re.findall(pattern, script_text, flags=re.DOTALL | re.MULTILINE)
+    if not matches:
+        return None
+    # Take the LAST occurrence — if the locked template ships a placeholder
+    # empty literal and the writer replaces it, both appear in concatenated
+    # script_text from soup.find_all("script").
+    raw = matches[-1].strip()
+    # Trim trailing characters that confuse a strict JSON parser.
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Try to balance the literal by finding the matching bracket.
+        depth = 0
+        for i, ch in enumerate(raw):
+            if ch in "[{":
+                depth += 1
+            elif ch in "]}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(raw[: i + 1])
+                    except json.JSONDecodeError:
+                        return None
+        return None
+
+
+def _validate_waterfall_data(script_text: str) -> tuple[list[str], list[str]]:
+    """I-007: every bar in `waterfallData` must have `{label, type, value, start, end}`
+    with `type` in WATERFALL_VALID_TYPES. Bars without start/end render at
+    NaN coordinates (the y-axis scale collapses) and the entire chart
+    appears empty — observed in CGN/NextEra 2026-05-13."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    data = _extract_js_literal(script_text, "waterfallData")
+    if data is None:
+        warnings.append(
+            "waterfallData: could not parse as JSON literal — locked template may "
+            "ship an empty placeholder; skipping schema check (I-007)"
+        )
+        return errors, warnings
+    if not isinstance(data, list):
+        errors.append(f"waterfallData must be an array; got {type(data).__name__} (I-007)")
+        return errors, warnings
+    if not data:
+        warnings.append("waterfallData is empty (I-007)")
+        return errors, warnings
+    required_fields = ("label", "type", "value", "start", "end")
+    numeric_fields = ("value", "start", "end")
+    for idx, bar in enumerate(data, start=1):
+        if not isinstance(bar, dict):
+            errors.append(f"waterfallData[{idx}] is not an object (I-007)")
+            continue
+        missing = [f for f in required_fields if f not in bar]
+        if missing:
+            errors.append(
+                f"waterfallData[{idx}] (label={bar.get('label')!r}) missing required fields: "
+                f"{missing}. Each bar must have label+type+value+start+end (I-007)"
+            )
+        t = bar.get("type")
+        if t is not None and t not in WATERFALL_VALID_TYPES:
+            errors.append(
+                f"waterfallData[{idx}] type={t!r} not in "
+                f"{sorted(WATERFALL_VALID_TYPES)} (I-007)"
+            )
+        for nf in numeric_fields:
+            if not isinstance(bar.get(nf), (int, float)) or isinstance(bar.get(nf), bool):
+                errors.append(
+                    f"waterfallData[{idx}].{nf}={bar.get(nf)!r} must be a number (I-007)"
+                )
+    return errors, warnings
+
+
+def _validate_sankey_conservation(script_text: str, var_name: str) -> tuple[list[str], list[str]]:
+    """I-007: per-node conservation in Sankey income/forecast diagrams.
+
+    Catches the CGN-class bug where the writer declares nodes (e.g. 费用,
+    税前利润, 税费) but never wires links to/from them — d3-sankey renders
+    a broken diagram and observers can't reconcile the flows.
+
+    Rules:
+      - Every declared node MUST appear as the source or target of at
+        least one link. Orphans are P5 failures.
+      - For each interior node (has BOTH inflow and outflow), inflow must
+        equal outflow within a 1% tolerance. This catches the NextEra-class
+        bug where 毛利润 had outflow > inflow (phantom money).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    data = _extract_js_literal(script_text, var_name)
+    if data is None:
+        warnings.append(f"{var_name}: could not parse as JSON literal; skipping conservation check (I-007)")
+        return errors, warnings
+    if not isinstance(data, dict):
+        errors.append(f"{var_name} must be an object with `nodes` + `links`; got {type(data).__name__} (I-007)")
+        return errors, warnings
+    # The locked template ships `{}` as an unfilled placeholder; an empty
+    # object is the writer's "I haven't populated this yet" state. Treat it
+    # as a warning so the locked-skeleton lineage check still passes, but
+    # surface it visibly. A populated literal without `nodes`/`links` is a
+    # different bug class.
+    if not data:
+        warnings.append(f"{var_name} is empty `{{}}` — writer must populate nodes/links (I-007)")
+        return errors, warnings
+    nodes = data.get("nodes")
+    links = data.get("links")
+    if not isinstance(nodes, list) or not isinstance(links, list):
+        errors.append(f"{var_name} must have list-typed `nodes` and `links` (I-007)")
+        return errors, warnings
+    if not nodes:
+        warnings.append(f"{var_name}.nodes is empty (I-007)")
+        return errors, warnings
+
+    flows = {i: {"in": 0.0, "out": 0.0} for i in range(len(nodes))}
+    for li, link in enumerate(links):
+        if not isinstance(link, dict):
+            errors.append(f"{var_name}.links[{li}] is not an object (I-007)")
+            continue
+        s, t, v = link.get("source"), link.get("target"), link.get("value")
+        if not isinstance(s, int) or not isinstance(t, int):
+            errors.append(f"{var_name}.links[{li}] source/target must be integer indices (I-007)")
+            continue
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            errors.append(f"{var_name}.links[{li}] value must be a number (I-007)")
+            continue
+        if s < 0 or s >= len(nodes) or t < 0 or t >= len(nodes):
+            errors.append(f"{var_name}.links[{li}] source/target out of range (I-007)")
+            continue
+        flows[s]["out"] += v
+        flows[t]["in"] += v
+
+    for i, node in enumerate(nodes):
+        name = (node or {}).get("name", f"#{i}") if isinstance(node, dict) else f"#{i}"
+        f = flows[i]
+        if f["in"] == 0 and f["out"] == 0:
+            # Orphan = cosmetic flaw (d3-sankey just ignores it). Warn only.
+            warnings.append(
+                f"{var_name}.nodes[{i}] {name!r} is orphan (no incoming or outgoing link). "
+                "Drop the node or wire its flow (I-007)"
+            )
+            continue
+        # Interior node: conservation required.
+        if f["in"] > 0 and f["out"] > 0:
+            denom = max(f["in"], f["out"])
+            delta = abs(f["in"] - f["out"]) / denom if denom else 0
+            if delta > 0.01:
+                errors.append(
+                    f"{var_name}.nodes[{i}] {name!r} violates flow conservation: "
+                    f"in={f['in']:.4f} vs out={f['out']:.4f} (delta {delta*100:.2f}% > 1%) (I-007)"
+                )
+    return errors, warnings
+
+
+def validate_html_report(
+    html_path: Path,
+    skeleton_path: Path | None = None,
+    *,
+    qc_audit_trail_path: Path | None = None,
+) -> dict[str, Any]:
     html_path = html_path.resolve()
     errors: list[str] = []
     warnings: list[str] = []
@@ -322,7 +514,14 @@ def validate_html_report(html_path: Path, skeleton_path: Path | None = None) -> 
         if got < need:
             errors.append(f"locked report structure incomplete: {key} count {got} < {need}")
 
-    porter_errors, porter_warnings = _validate_porter_texts(soup)
+    # Auto-detect QC trail if caller didn't pass one explicitly. The trail's
+    # mere existence flips the Porter validator into "QC mode" (per I-004 /
+    # I-007); its absence flips it into "no-QC mode".
+    if qc_audit_trail_path is None:
+        qc_audit_trail_path = html_path.parent / "qc_audit_trail.json"
+    qc_ran = qc_audit_trail_path.exists()
+
+    porter_errors, porter_warnings = _validate_porter_texts(soup, qc_ran=qc_ran)
     errors.extend(porter_errors)
     warnings.extend(porter_warnings)
 
@@ -334,6 +533,15 @@ def validate_html_report(html_path: Path, skeleton_path: Path | None = None) -> 
     for var_name in ("waterfallData", "sankeyActualData", "sankeyForecastData", "porterScores"):
         if not re.search(rf"\bconst\s+{re.escape(var_name)}\s*=", script_text):
             errors.append(f"missing JS data variable: {var_name}")
+
+    waterfall_errors, waterfall_warnings = _validate_waterfall_data(script_text)
+    errors.extend(waterfall_errors)
+    warnings.extend(waterfall_warnings)
+
+    for sankey_var in ("sankeyActualData", "sankeyForecastData"):
+        s_errors, s_warnings = _validate_sankey_conservation(script_text, sankey_var)
+        errors.extend(s_errors)
+        warnings.extend(s_warnings)
 
     line_count = len(html.splitlines())
     if line_count < 500:
