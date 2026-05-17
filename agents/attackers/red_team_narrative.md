@@ -72,6 +72,39 @@ Per `INCIDENTS.md` I-002, you must independently confirm:
 
 If any of these is wrong, raise `defective_severity: critical` and explicitly cite I-002.
 
+### 6. Analyst-substrate quality
+
+The plan-v3 deterministic gates — `P10_6_voice_gate` (Cards 1–5 analyst content) and `P5_6_porter_depth_gate` (Porter 5×6 segments) — already reject missing fields, short fields, and the finite banned-phrase list. **Your job is to attack prose that satisfies the structural contract but lacks real analyst substance.** Hollow content that passes the gate is the failure mode this section exists for.
+
+### 6.a — Cards 1-5 voice / analyst-content depth (P10.7 only)
+
+Open `card_slots.json` and the parallel `card_slots_worker_notes.json` for each of Cards 01–05. Slots in scope: `intro_sentence`, `company_focus_paragraph`, `conclusion_block`, `revenue_explainer_points`, `judgement_paragraph`, `brand_statement`. Attack:
+
+- **Generic `data_anchor`** — number paired with a vacuous comp. `"revenue $30B vs 同业"` with no peer named, or `"margin 50% vs 历史"` with no specific year. The `vs <…>` side must reference a *specific* peer, year, or guide number. Flag any anchor whose comp side is a stub.
+- **Recycled `variant_view`** — paraphrases the consensus instead of diverging from it. Test: does `variant_view[i]` propose a *measurable* delta vs `consensus_view`? If you cannot quote where the deltas are, it is recycling, not a variant.
+- **Unfalsifiable `falsifier`** — present but unobservable in practice ("if growth slows"). A true falsifier names a **specific metric**, a **specific direction**, and a **specific window**. Example of acceptable: "Q+1 nearline ASP sequential <+5% with mix held constant." Anything weaker is a defect.
+- **Stale `primary_quote`** — quote is real but >12 months old, or generic ("we are excited about our future"). The quote must be load-bearing for the slot's claim, not decorative. Flag stale or non-load-bearing quotes.
+- **Conviction missing on Card 5** — `brand_statement` or `brand_subheading` must contain an explicit conviction word ("long-bias", "cautious", "high-conviction", "constructive-with-asymmetry", etc.) **and** name the asymmetry direction (upside-skewed / downside-skewed / symmetric-but-mispriced). Flag if either is absent.
+- **Backstop residue** — the banned-phrase list (`说白了`, `X 不是 Y 而是 Z`, `已不是核心叙事`, the "关注 X 每天学一个公司" CTA pattern) is finite. Rhetorical evasion adapts. Scan visible slot text for `本质上` / `归根结底` / `换句话说` / `归根到底` and adjacent pundit framing that adds zero analytical content. Flag judgement-style filler.
+
+**Authority slot rule.** `brand_statement` and `judgement_paragraph` are authority slots — they **must** carry a `primary_quote` in worker notes. The deterministic gate enforces presence; you attack the quote's substance per the stale/generic test above.
+
+**Severity rule.** ≥2 Cards 1–5 slots flagged, OR Card 5 lacks conviction-word AND asymmetry direction → `severity: critical`. Single weak slot → `severity: warn`. Use `attack_class: card_voice_substrate`.
+
+### 6.b — Porter per-force methodology (P5.7 only)
+
+Open `porter_analysis.json` — v2 schema is a **single perspective** with `forces[]` (5 entries). Each force carries 6 mandatory segments: `rating_statement`, `data_anchor`, `mechanism`, `falsifier`, `primary_signal`, `look_ahead`. The deterministic gate (`P5_6_porter_depth_gate`) requires all six be present and meet minimum length. **You attack quality, not presence.**
+
+For each of the 5 forces:
+
+- **`data_anchor`** — number paired with a *real* comp: named peer / specific year / management guide number. "vs market average" / "vs industry" is a stub. Flag.
+- **`mechanism`** — must explain why the score is **X and not X±1**. If the prose merely describes the force ("rivalry is intense because there are many competitors") without justifying the specific score level, it is decorative. Flag.
+- **`falsifier`** — observable, dated, specific. Same standard as 6.a. "If competition intensifies" is not a falsifier.
+- **`primary_signal`** — must be a real quote with **named speaker + venue + date**. "Industry consensus suggests" and "management has indicated" are paraphrases, not signals. Reject. A paraphrased signal is the single hardest defect for the deterministic gate to catch and is the most common silent failure on this segment.
+- **`look_ahead`** — must name a specific upcoming data point or event with a window (e.g. "next-quarter ASP print in earnings release Aug-2026"). "We will continue to monitor" is filler.
+
+**Severity rule.** ≥2 forces flagged, OR any force's `primary_signal` is a paraphrase rather than a real quote → `severity: critical`. Single soft segment → `severity: warn`. Use `attack_class: porter_segment_quality`.
+
 ## Output contract
 
 Write to `validation/red_team_narrative_{phase}.json`:
@@ -87,7 +120,7 @@ Write to `validation/red_team_narrative_{phase}.json`:
     {
       "id": "N-001",
       "thesis": "<the writer's claim>",
-      "attack_class": "hidden_assumption | missing_counter_evidence | porter_directionality | cross_card_coherence | locked_template_integrity",
+      "attack_class": "hidden_assumption | missing_counter_evidence | porter_directionality | cross_card_coherence | locked_template_integrity | card_voice_substrate | porter_segment_quality",
       "specifics": "<what specifically is wrong or missing>",
       "evidence": "<paths / URLs / DB rows>",
       "severity": "critical | warn | info",

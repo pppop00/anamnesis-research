@@ -28,14 +28,20 @@ These rules are **load-bearing** and apply to every run. They are read once at s
   - growth rates: ±0.5pp
   - prices, share counts, or any value tagged `"exact": true`: 0 tolerance
 
-## QC scoring math (P3.6)
+## QC scoring math (P3.6) — plan v3 single perspective
 
-For each `(perspective, force)` pair: `weighted = 0.34·draft + 0.33·peer_a + 0.33·peer_b`.
+Porter is **one perspective × 5 forces × 6 mandatory segments per force** (schema v2). The 3-perspective layout (`company` / `industry` / `forward`) was removed by plan v3. Anything still emitting v1-shape `porter_analysis.json` is a defect — `tools/research/validate_porter_analysis.py` rejects v1 with a migration hint.
+
+For each of the 5 forces: `weighted = 0.34·draft + 0.33·peer_a + 0.33·peer_b`.
 - `delta = |weighted − draft|`
 - If `delta > 1.00` → change score to `round(weighted)`, clamped to 1–5.
 - If `delta ≤ 1.00` → keep draft, mark as "maintain X" (never fabricate "from X to Y").
 
 Reasoning-only QC items must say "maintain X". Only QC items with an actual score change in the audit trail may say "from X to Y".
+
+Per force, the QC peers and merge agent additionally audit all 6 segments:
+`qc_statement` / `data_anchor` / `mechanism` / `falsifier` / `primary_signal` / `look_ahead`.
+Missing or under-length segments block resolution; `P5_6_porter_depth_gate` then blocks `P5_7_RED_TEAM`.
 
 ## Porter score orientation
 
@@ -45,6 +51,17 @@ Threat / pressure scale (not attractiveness):
 - 4–5 = high threat / red
 
 Intense rivalry → high red; minimal competition → low green. Reverse this and Validator and reviewers will catch it.
+
+## Cards 1–5 voice governed by analyst-content gate (plan v3)
+
+Card 1–5 prose (cover / industry-vs-consensus / one-number+comp / catalyst+falsifier / PM-soundbite) is governed by `validate_card1_5_analytical_content()` in `skills_repo/ep/scripts/generate_social_cards.py`, called at `P10_6_voice_gate`. The writer must emit two parallel JSONs:
+
+- `<Company>_Research_<lang>.card_slots.json` (rendered prose, existing schema)
+- `<Company>_Research_<lang>.card_slots_worker_notes.json` (hidden analyst fields per Card 1-5 slot: `data_anchor` with number + comp, `variant_view` ≥15 chars, plus ≥1 of `falsifier` / `primary_quote` / `catalyst_with_date`; authority slots `brand_statement` / `judgement_paragraph` require `primary_quote`)
+
+Backstop banned phrases on Cards 1-5 only (Card 6 keeps 贴吧 tone): `说白了`, `X 不是 Y 而是 Z` template, `已不是核心叙事 / 已不重要 / 体现了 / 总而言之 / 综上 / 简单来说`, "关注 X 每天学一个公司" subscription-bait CTA.
+
+`P10_6_voice_gate` blocks `P10_7_RED_TEAM`, `P11_render`, and `P_DB_INDEX` on failure. Red-team narrative §6.a attacks the substance of what passes the deterministic gate.
 
 ## Database write rules
 

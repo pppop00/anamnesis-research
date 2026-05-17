@@ -35,6 +35,7 @@ The prose below uses dotted shorthand (P1.5, P3.6, P5.7) that maps to canonical 
 | P5 — HTML report writer | `P5_html` |
 | P5_gate — HTML structural gate | `P5_html_gate` |
 | P5.5 — final report data validator | `P5_5_data_val` |
+| P5.6 — Porter five-forces depth gate (plan v3) | `P5_6_porter_depth_gate` |
 | P5.7 — red team report | `P5_7_RED_TEAM` |
 | P6 — packaging + report validator | `P6_pkg` |
 | P7 — logo production | `P7_logo` |
@@ -43,6 +44,7 @@ The prose below uses dotted shorthand (P1.5, P3.6, P5.7) that maps to canonical 
 | P9 — layout fill | `P9_layout` |
 | P10 — Validator 1 | `P10_validator1` |
 | P10.5 — Validator 2 | `P10_5_validator2` |
+| P10.6 — Cards 1-5 analyst-content gate (plan v3) | `P10_6_voice_gate` |
 | P10.7 — red team cards | `P10_7_RED_TEAM` |
 | P11 — render six PNGs | `P11_render` |
 | P12 — final audit (paying-customer gate) | `P12_final_audit` |

@@ -1,0 +1,117 @@
+{
+  "schema_version": 2,
+  "scores": [4, 3, 2, 3, 5],
+  "qc_audit_trail_present": true,
+  "forces": [
+    {
+      "name": "供应商议价能力",
+      "key": "supplier_power",
+      "score": 4,
+      "score_changed": false,
+      "score_before": 4,
+      "score_after": 4,
+      "qc_statement": "经QC合议，维持供应商议价能力为4分。先进设备、EDA和关键材料仍受外部约束，短期难以替代。",
+      "data_anchor": {
+        "metric": "EUV 单一供应商集中度",
+        "value": "90% (ASML)",
+        "comp": "全球唯一 EUV 量产供应商；公司 capex 设备占比约45%，同业平均约38%"
+      },
+      "mechanism": "EUV、先进制程化学品和高端CMP设备由极少数海外供应商把持，公司议价空间十分有限；切换成本极高，产能锁定多以长期协议形式锁价，使供应商在每一轮涨价周期中都处于显著强势地位，难以通过常规谈判反向压价。",
+      "falsifier": "若2027Q1之前出现可量产的替代EUV方案或本土光刻机突破，供应商集中度下降超过20%，本评分应调整为3分。",
+      "primary_signal": {
+        "speaker": "CFO @ Q3-26 earnings call",
+        "quote": "We expect EUV-related capex intensity to remain elevated through FY27 given single-source constraints.",
+        "url_or_filing": "https://investor.example.com/q3-26-transcript"
+      },
+      "look_ahead": "未来3-4个季度供应商议价能力维持高位，关注本土EDA和光刻替代方案的工程进展。"
+    },
+    {
+      "name": "买方议价能力",
+      "key": "buyer_power",
+      "score": 3,
+      "score_changed": false,
+      "score_before": 3,
+      "score_after": 3,
+      "qc_statement": "经QC合议，维持买方议价能力为3分。前五大客户集中度中等，议价空间被产能稀缺性部分对冲。",
+      "data_anchor": {
+        "metric": "前五大客户收入占比",
+        "value": "62%",
+        "comp": "公司CR5约62%；同业平均约48%，结构性议价压力略高于行业"
+      },
+      "mechanism": "客户集中度偏高使大型买方在长协续签谈判时具备一定议价能力；但当前产能紧张和先进制程稀缺性使部分议价权重新回流至公司一侧，综合来看整体处于中性偏弱的买方地位，难以单方面压低长协价格。",
+      "falsifier": "若2026H2出现前五大客户中任一方公开转单或自研替代且对应收入下滑超过15%，本评分应上调至4分。",
+      "primary_signal": {
+        "speaker": "CEO @ FY26 annual report",
+        "quote": "Top-tier foundry capacity remains tight across N3 and N2 nodes despite buyer renegotiation cycles.",
+        "url_or_filing": "10-K FY2026 annual report"
+      },
+      "look_ahead": "随着新产能在2027年逐步释放，买方议价能力可能小幅回升，需关注长协价格条款变化。"
+    },
+    {
+      "name": "新进入者威胁",
+      "key": "new_entrants",
+      "score": 2,
+      "score_changed": false,
+      "score_before": 2,
+      "score_after": 2,
+      "qc_statement": "经QC合议，维持新进入者威胁为2分。资本与技术壁垒极高，新进入者短期内难以构成实质威胁。",
+      "data_anchor": {
+        "metric": "建设单条先进制程产线所需capex",
+        "value": "约200亿美元",
+        "comp": "约为大型半导体公司年度capex的60%-80%，新进入者难以一次性筹集"
+      },
+      "mechanism": "先进制程的资金投入、稀缺人才、核心IP和设备供应链壁垒极高；地缘政治限制叠加客户验证周期长达3年以上，使任何新进入者从0到1所需的时间窗都远远超过本评估周期，短期内难以形成实质威胁。",
+      "falsifier": "若2027Q4之前出现任何新晋厂商在N5或更先进节点获得Tier-1客户的tape-out订单，本评分应上调至3分。",
+      "primary_signal": {
+        "speaker": "Industry analyst @ TechInsights 2026",
+        "quote": "Sub-3nm capacity remains concentrated in two players for the foreseeable horizon.",
+        "url_or_filing": "https://www.techinsights.com/reports/sub3nm-2026"
+      },
+      "look_ahead": "未来2-3年新进入者威胁评分大概率维持低位，关注地缘政治推动的本土代工厂能力突破。"
+    },
+    {
+      "name": "替代品威胁",
+      "key": "substitutes",
+      "score": 3,
+      "score_changed": true,
+      "score_before": 2,
+      "score_after": 3,
+      "qc_statement": "经QC合议，决定将替代品威胁评分从2调整为3分。AI专用ASIC与chiplet架构正在部分场景替代通用算力。",
+      "data_anchor": {
+        "metric": "ASIC在AI推理算力中的份额",
+        "value": "28% (2026)",
+        "comp": "2024年仅约12%，年增长率超过40%，对通用GPU形成实质性替代压力"
+      },
+      "mechanism": "AI workloads差异化加深，超大客户自研ASIC和chiplet方案在推理侧逐步替代通用算力路径；虽然训练侧替代有限，但推理市场占比上升使替代品威胁结构性增强。",
+      "falsifier": "若2027Q2前ASIC在AI推理算力中的份额回落至20%以下，或主要超大客户公开放弃自研ASIC，本评分应回调至2分。",
+      "primary_signal": {
+        "speaker": "Hyperscaler CTO @ AI Hardware Summit 2026",
+        "quote": "We will shift more than 40% of inference workload to in-house ASIC stacks within 18 months.",
+        "url_or_filing": "https://www.aihwsummit.com/sessions/2026-keynote"
+      },
+      "look_ahead": "未来4-6个季度替代品威胁仍在上升通道，关注超大客户的ASIC roadmap和chiplet生态进展。"
+    },
+    {
+      "name": "行业内竞争",
+      "key": "rivalry",
+      "score": 5,
+      "score_changed": false,
+      "score_before": 5,
+      "score_after": 5,
+      "qc_statement": "经QC合议，维持行业内竞争为5分。先进制程、产能扩张和地缘政治三重压力使行业竞争极度激烈。",
+      "data_anchor": {
+        "metric": "Top-3厂商先进制程capex合计",
+        "value": "1500亿美元 (2026E)",
+        "comp": "较2024年增加约45%，行业进入新一轮高强度资本竞赛"
+      },
+      "mechanism": "Top-3厂商同步在N3/N2及先进封装上大举投入，产能、客户、人才和地缘资源全面竞争；任何一家率先实现良率与产能突破都会显著改变市场份额格局，使竞争烈度长期处于高位。",
+      "falsifier": "若2027H1之前出现任一竞争对手主动延后N2量产时点超过两个季度，且公司份额上升超过3pp，本评分可下调至4分。",
+      "primary_signal": {
+        "speaker": "CFO @ Investor Day 2026",
+        "quote": "We see unprecedented capex intensity across the leading-edge cohort over the next three years.",
+        "url_or_filing": "https://investor.example.com/investor-day-2026"
+      },
+      "look_ahead": "未来3-5年行业竞争烈度维持5分高位，关注良率突破、产能时点和地缘政策窗口变化。"
+    }
+  ]
+}
