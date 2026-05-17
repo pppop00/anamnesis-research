@@ -135,6 +135,18 @@ Institutional memory of failure. Each entry is a real incident + the load-bearin
 
 ---
 
+## I-009 — Card 1 renderer-generated metrics drifted from report KPI intent
+
+- **Date observed:** 2026-05-16
+- **Phase:** `P11_render` / `P10_validator1`
+- **What happened:** In `output/Yangtze_Memory_Technologies_2026-05-16_7f447232/cards/01_cover.png`, Card 1 rendered net income as `-11200 万元` while the report KPI in `research/Yangtze_Memory_Technologies_Research_CN.html` used `归母净利润 -1.12亿元`. The same card also rendered `经营现金流 25.0 亿元` even though the report and Card 3 narrative emphasized `自由现金流 -75亿元`.
+- **Root cause:** Card 1 metrics are renderer-generated from `financial_data.json`, not authored in `card_slots.json`. `money_text()` chose units using signed value thresholds, so negative 亿 amounts could fall into 万元 formatting. `operational_metric()` also prioritized operating cash flow whenever present, even when negative free cash flow was the report's core cash-flow KPI.
+- **Rule (load-bearing):** Card 1 renderer-generated metrics must match the report's KPI intent and unit scale. Money formatting must choose units using absolute magnitude. If `free_cash_flow < 0`, Card 1 must prefer `自由现金流` over positive operating cash flow unless explicitly overridden.
+- **Detection:** Add Validator 1 coverage for Card 1 generated metrics: compare rendered metric labels/values implied by `generate_social_cards.py` against `financial_data.json`, `financial_analysis.json`, and HTML KPI labels; fail if net income unit scale drifts or FCF-negative runs render OCF as the primary cash-flow metric. Manual visual review caught this run.
+- **Related contract:** `skills_repo/ep/scripts/generate_social_cards.py` `money_text()` / `operational_metric()` / `cover_metrics()`; `tools/photo/validate_cards.py`; `skills_repo/ep/agents/validation-agent.md`; `INCIDENTS.md` I-005 and I-008.
+
+---
+
 ## How this file is used
 
 1. **Pre-run** (`P_INCIDENT_PRECHECK`, before `P0_intent`): orchestrator reads end-to-end. For each incident it confirms the rule is wired into the current plan and logs `incident_precheck.acknowledged` to `meta/run.jsonl`. Novel-looking matches against the current target raise the bar in downstream phases.
