@@ -67,6 +67,7 @@ For per-gate rules, the full whitelist of allowed `source` values, and rejection
 | Bootstrap a run dir | `python tools/io/run_dir.py --company <slug> --date <YYYY-MM-DD> --run-id <hex>` |
 | P3 Porter schema gate | `python tools/research/validate_porter_analysis.py --run-dir <path>` (must pass before P3.5; reruns at P5 entry — `INCIDENTS.md` I-004) |
 | P5 HTML gate | `python tools/research/validate_report_html.py --run-dir <path> --lang <cn\|en>` (must pass before P6/P7) |
+| Delivery tree check | `python tools/io/validate_run_artifacts.py --run-dir <path>` (root must contain only standard subfolders; HTML lives in `research/`, cards in `cards/`) |
 | Index a finished run | `python tools/db/index_run.py --run-dir <path>` (only after P12 passes and `P_INCIDENT_POSTCHECK` has `flagged: []`) |
 
 The full per-phase tool/agent inventory lives in `workflow_meta.json`.

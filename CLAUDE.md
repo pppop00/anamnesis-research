@@ -11,7 +11,7 @@ This repo is a **harness-backed skill**:
 - **Skill side** (LLM-facing, auto-triggered): `SKILL.md` is the thin entry. It tells the model *what to do* and dictates a strict **boot order** — read on every research-style invocation. See `SKILL.md` § "Boot order — read in this order, every session".
 - **Harness side** (architecture/CLI/tests/DB/audit): `HARNESS.md` tells maintainers *how it runs*. The runtime brief that actually drives a research session is `agents/orchestrator.md`.
 
-The machine-readable phase + gate contract is `workflow_meta.json` (33 phases). It is authoritative — anything in prose docs that contradicts it is a bug in the prose.
+The machine-readable phase + gate contract is `workflow_meta.json` (35 phases). It is authoritative — anything in prose docs that contradicts it is a bug in the prose.
 
 ## Boot order for an Anamnesis Research run
 
@@ -149,7 +149,7 @@ Current tolerances: margins/ratios/pp: ±0.5pp; currency: ±0.5% relative; growt
 
 | Topic | File |
 |---|---|
-| Phase-by-phase narrative (33 phases) | `references/phase_contract.md` |
+| Phase-by-phase narrative (35 phases) | `references/phase_contract.md` |
 | Visual workflow diagram | `references/workflow_diagram.md` |
 | Per-gate rules (whitelisted `source` values) | `references/p0_gates.md` |
 | Subagent toolset whitelist, concurrency caps, timeouts | `references/subagent_toolsets.md` |

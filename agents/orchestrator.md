@@ -21,6 +21,12 @@ You are the top-level coordinator for one **Anamnesis Research** run. You read t
 
 One run directory at `output/{Company}_{Date}_{RunID}/` with the structure described in `references/run_artifacts.md`, plus new rows in `db/equity_kb.sqlite`.
 
+The root of the run directory is only an index. Do not write phase artifacts directly into it. Customer-facing deliverables are:
+- `research/{Company}_Research_{CN|EN}.html`
+- `cards/01_cover.png` ... `cards/06_post_copy.png`
+
+All JSON contracts, gates, logs, and DB summaries must stay in their subfolders (`meta/`, `research/`, `cards/`, `validation/`, `db_export/`, `logs/`). If a phase accidentally writes root-level JSON/HTML/PNG files, run `python tools/io/validate_run_artifacts.py --run-dir <run_dir> --fix` before handoff, then rerun it without `--fix`; exit 0 is required for a clean delivery tree.
+
 ## Phase id index
 
 The prose below uses the dotted shorthand (P1, P1.5, P2.6, P5.7, …) that maps to canonical phase ids in `workflow_meta.json`. `tools/research/validate_workflow_meta.py` cross-checks that every id below appears literally somewhere in this file; keep both columns in sync when adding or renaming a phase.
@@ -148,7 +154,7 @@ Delegate to `skills_repo/er/agents/qc_macro_peer_a.md` and `qc_macro_peer_b.md` 
 
 ### 12. P3 / P3.5 / P3.6 — Porter + QC + merge
 
-- Inline: produce `porter_analysis.json` (three perspectives × five forces). **Each perspective MUST be a dict with both `scores` (5 ints, 1–5) and the five force keys `supplier_power` / `buyer_power` / `new_entrants` / `substitutes` / `rivalry`, each a non-empty string. The flat `{scores, narrative}` shape is forbidden** (see `INCIDENTS.md` I-004 — the writer cannot synthesise five `<li>` from a single sentence).
+- Inline: produce `research/porter_analysis.json` using plan-v3 schema: **one perspective × five forces × six mandatory segments per force**. The root must carry `schema_version: 2`, `scores` in canonical force order, `qc_audit_trail_present`, and `forces[]` with exactly five objects keyed `supplier_power` / `buyer_power` / `new_entrants` / `substitutes` / `rivalry`. Each force needs `qc_statement`, `data_anchor`, `mechanism`, `falsifier`, `primary_signal`, and `look_ahead`. The old three-perspective shape (`company_perspective` / `industry_perspective` / `forward_perspective`) and the flat `{scores, narrative}` shape are forbidden.
 - **P3 schema gate**: immediately after `porter_analysis.json` is written, run `python tools/research/validate_porter_analysis.py --run-dir <run_dir>`. **Capture exit code; exit 0 is required.** Critical → halt the Porter sub-pipeline and rerun the Porter draft with the correct schema (do not advance to Phase 3.5 / 3.6 / 4 / 5 with a malformed `porter_analysis.json`). The same validator runs again as a P5 entry precondition inside `report_validator.md` §0.3.
 - Parallel: `qc_porter_peer_a.md` and `qc_porter_peer_b.md`.
 - Sequential merge: `qc_resolution_merge.md` writes `qc_audit_trail.json` and updates `prediction_waterfall.json` + `porter_analysis.json` in place. After the merge updates `porter_analysis.json`, rerun the schema gate; merging must not regress the shape.
@@ -166,7 +172,7 @@ Delegate to `agents/cross_validator.md` (it uses `tools/audit/db_cross_validate.
 - P5_gate: immediately run `python tools/research/validate_report_html.py --run-dir <run_dir> --lang <cn|en>` **and** `python tools/research/validate_porter_analysis.py --run-dir <run_dir>`. **Capture both exit codes; both must be 0.** `validate_report_html.py` failing on line count (<500 lines), missing section IDs, missing `LOCKED JAVASCRIPT`, missing chart variables, or unreplaced `{{PLACEHOLDER}}` → discard that HTML and rerun P5 from the extracted skeleton. `validate_porter_analysis.py` failing on `{scores, narrative}` flat shape, missing force keys, or invalid scores → halt and rerun **Phase 3** (Porter draft) with the correct per-force schema; do not let P5 paper over a malformed `porter_analysis.json`. You may not paraphrase either gate's verdict, you may not declare them `not_applicable`, and you may not invent statuses like `pass_with_scope_limitations`. The HTML gate's JSON output is the authoritative `html_template_gate` value carried into P6.
 - P5.5: delegate to `final_report_data_validator.md`. CRITICAL findings → loop back to P5 with the report writer's same agent (cap 2). 0 CRITICAL → proceed.
 - **P5.7 RED TEAM**: write `meta/red_team/P5_7_RED_TEAM.input.json` with absolute paths to the locked-template HTML, all upstream `research/*.json`, `research/cross_validation.json`, and the P5.5 validator output. Then delegate **in parallel** to `agents/attackers/red_team_numeric.md` and `agents/attackers/red_team_narrative.md`. Both must complete. They write `validation/red_team_numeric_P5_7_RED_TEAM.json` and `validation/red_team_narrative_P5_7_RED_TEAM.json`. If either reports `summary.critical > 0`, build a single combined revision request from both attackers' challenge lists and loop back to `P5_html` once (red-team retry cap = 1, separate from the P5.5 retry cap of 2). A second critical from the red team after the loop = halt and surface to user. `warn` findings are appended to `validation/QA_REPORT.md` (later, at P12) but do not block.
-- P6: tool `tools/research/packaging_check.py` then delegate to `report_validator.md` for final structural review. `packaging_check.py` repeats the locked-template HTML gate and writes `html_template_gate` into `structure_conformance.json`; a critical gate result blocks all EP card phases. Selects packaging profile from the **four** whitelisted in `workflow_meta.json -> packaging_profiles` only — never invent a new profile name (e.g. `institution_compat_*`, `private_company_*`, `scope_limited_*`); the picker is `(qc_mode, sec_api_mode)` and that is the only valid input. `report_validation.txt`'s top-line status is one of `pass | warn | critical`; `pass_with_scope_limitations` and similar freeform statuses are fabrications and the run is not deliverable.
+- P6: tool `tools/research/packaging_check.py` then delegate to `report_validator.md` for final structural review. `packaging_check.py` repeats the locked-template HTML gate and writes `html_template_gate` into `structure_conformance.json`; a critical gate result blocks all EP card phases. Selects packaging profile from the **four** whitelisted in `workflow_meta.json -> packaging_profiles` only — never invent a new profile name (e.g. `institution_compat_*`, `private_company_*`, `scope_limited_*`); the picker is `(qc_mode, sec_api_mode)` and that is the only valid input. `report_validation.txt`'s top-line status is one of `pass | warn | critical`; `pass_with_scope_limitations` and similar freeform statuses are fabrications and the run is not deliverable. Run `tools/io/validate_run_artifacts.py --run-dir <run_dir> --fix` if the writer or validators left root-level artifacts; then rerun without `--fix` and require exit 0.
 
 ### 15. P7..P11 — card pipeline (EP)
 
@@ -179,6 +185,7 @@ Walk the EP pipeline from `skills_repo/ep/SKILL.md`:
 6. **P10.5 Validator 2** — delegate to `validator-2-agent.md` with web tools enabled. Any change to `card_slots.json` → rerun P10. Loop cap = 3.
 7. **P10.7 RED TEAM** — fires **before** P11 render; cards do not yet exist as PNGs. Write `meta/red_team/P10_7_RED_TEAM.input.json` referencing all six `card_slots.json` files, the source `research/*.json`, `cards/validator{1,2}_report.json`, and the upstream P5.7 red-team outputs (so attackers know what was already challenged at the report stage). **Do NOT** include rendered-card paths in the manifest — they don't exist yet. Delegate **in parallel** to `agents/attackers/red_team_numeric.md` and `agents/attackers/red_team_narrative.md` under their pre-render contracts: numeric attacks source-chain, basis/units, tolerance vs source JSONs, palette consistency, logo-path realizability, and *render-budget realizability* (will the value fit the card's char/pixel budget; will rounding shift mislead readers); narrative attacks Porter directionality, hidden assumptions, missing counter-evidence, and cross-card coherence. **Actual PNG OCR is P12 layer 2, not P10.7.** If either reports `summary.critical > 0`, loop back once to `P9_layout` (or `P8_content` when the defect is content-level, not layout-level) with both attackers' challenge lists combined. Red-team retry cap = 1 here. A second critical = halt.
 8. **P11 render** — `python tools/photo/render_cards.py --input <html> --slots <slots> --brand "金融豹" --palette <palette> --output-root <run_dir>/cards`. Verify 6 PNGs at 2160×2700.
+9. **Artifact tree check** — `python tools/io/validate_run_artifacts.py --run-dir <run_dir>`. If it reports known misplaced root artifacts, rerun with `--fix`, then rerun without `--fix`. Unknown root artifacts are a delivery blocker until moved or deleted intentionally.
 
 ### 16. P12 — final post-card audit ★
 
@@ -231,6 +238,8 @@ Print to the user (in `report_language`):
 - The HTML report path.
 - Number of WARNING items in QA_REPORT.md.
 - Number of new DB rows written and any peer-divergence flags.
+
+Do not list every intermediate JSON in the handoff unless the user asks for audit internals; the primary deliverables are the HTML report and six cards.
 
 ## Rules of engagement
 
