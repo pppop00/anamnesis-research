@@ -97,22 +97,17 @@
       "agent": "skills_repo/er/agents/edge_insight_writer.md"
     },
     {
-      "id": "P2_fin_analysis",
-      "produces": ["research/financial_analysis.json"],
+      "id": "P2_analysis",
+      "produces": [
+        "research/financial_analysis.json",
+        "research/prediction_waterfall.json"
+      ],
       "blocking": true,
       "interactive": false,
       "parallelism": "sequential",
       "inline": true,
-      "executor_note": "Run by orchestrator with research+io toolsets; no dedicated subagent."
-    },
-    {
-      "id": "P2_5_waterfall",
-      "produces": ["research/prediction_waterfall.json"],
-      "blocking": true,
-      "interactive": false,
-      "parallelism": "sequential",
-      "inline": true,
-      "executor_note": "Run by orchestrator with research+io toolsets; no dedicated subagent."
+      "executor_note": "Consolidated phase: financial analysis -> prediction waterfall -> Sankey injection into financial_analysis.json. Run by orchestrator with research+io toolsets; no dedicated subagent. Replaces the prior P2_fin_analysis / P2_5_waterfall / P4_sankey trio — those were three sequential inline phases that always ran together and produced linked artifacts. Internal order: write financial_analysis.json -> write prediction_waterfall.json (uses analysis as input) -> append the Sankey payload into financial_analysis.json. All three steps must complete before P2_6_qc_macro reads either artifact.",
+      "consolidates": ["P2_fin_analysis", "P2_5_waterfall", "P4_sankey"]
     },
     {
       "id": "P2_6_qc_macro",
@@ -172,15 +167,6 @@
         "predicted_vs_prior_actual: WARNING (calibration data; never blocks)",
         "sector_macro_identity: CRITICAL only in mode==A — same (geography, period) macro vector should match across peers"
       ]
-    },
-    {
-      "id": "P4_sankey",
-      "produces": ["research/financial_analysis.json:sankey"],
-      "blocking": true,
-      "interactive": false,
-      "parallelism": "sequential",
-      "inline": true,
-      "executor_note": "Inject Sankey payload into financial_analysis.json; no subagent needed."
     },
     {
       "id": "P5_html",

@@ -46,17 +46,17 @@ For per-gate rules, the full whitelist of allowed `source` values, and rejection
 
 ## Hard floor
 
-- **Never skip `P_INCIDENT_PRECHECK`** — read `INCIDENTS.md` and acknowledge each entry into `meta/run.jsonl` before any phase work. A run that did not pre-check is not deliverable.
-- **Never skip `P5_7_RED_TEAM` or `P10_7_RED_TEAM`.** The red-team attackers (`agents/attackers/red_team_numeric.md`, `red_team_narrative.md`) are distinct from QC peers — they exist to find defects, not to average. Critical findings loop back to the writer once; a second critical halts the run.
-- **Never skip `P_INCIDENT_POSTCHECK`** before `P_DB_INDEX`. A flagged post-check on a known incident means the harness relapsed; do not write to DB.
-- **Never skip P12** unless the user explicitly says so in the same turn. P12 is the paying-customer audit gate.
-- **Never write to DB** if P12 failed. `P_DB_INDEX` runs only after `P12_final_audit` passes.
-- **Never bypass a P0 gate** by inventing a value. Cost of guessing wrong = full re-run.
-- **Never edit the locked HTML template** during P5. Substitute `{{PLACEHOLDER}}` only — the SHA256 pin in ER's tests will catch you.
-- **Never accept a simplified HTML report.** After P5, run `tools/research/validate_report_html.py`; line-count/section/JS/template-marker failure means the report writer did not use the locked template and P5 must be rerun before P6/P7. There is **no "institution-compatible" / "private-company" / "scope-limited" bypass** for the locked template. Every Anamnesis Research run — public, private, hedge fund, family office, government entity, anything — fills the same locked skeleton. If issuer-level financial statements are unavailable, the report writer fills the locked sections with the best available proxies (AUM/strategy/holdings/manager filings/etc.) and labels gaps inline; it does **not** drop sections, shorten the template, or emit a hand-written page.
-- **Never invent a packaging profile.** `structure_conformance.json -> profile` must be one of the four whitelisted in `workflow_meta.json -> packaging_profiles`. Strings like `institution_compat_*`, `private_company_*`, `scope_limited_*`, etc. are fabricated and will be rejected in review.
-- **Never invent a status string.** `report_validation.txt`'s top-line status is `pass | warn | critical`, full stop. `pass_with_scope_limitations`, `not_applicable`, `partial_pass`, etc. are fabricated and will be rejected. Same for `structure_conformance.json -> html_template_gate.status` (which must be the literal output of `tools/research/validate_report_html.py`, not a hand-written verdict).
-- **Never persist user emails to the DB.** SEC EDGAR email is a runtime arg only; PII guard in `tests/test_db_pii.py` is non-negotiable.
+`MEMORY.md` is the single source of truth for hard rules and is frozen verbatim into `meta/system_prompt.frozen.txt` at session start. Read it once at boot; do not re-paraphrase it inline. The substantive lists live there:
+
+- `MEMORY.md` §"Never-skip phases" — `P_INCIDENT_PRECHECK`, `P5_7_RED_TEAM` / `P10_7_RED_TEAM`, `P12_final_audit`, `P_INCIDENT_POSTCHECK`, the four P0 gates.
+- `MEMORY.md` §"Locked template invariants" — locked HTML skeleton, no simplified bypass, packaging-profile whitelist, status-string whitelist.
+- `MEMORY.md` §"Hard rules" — logo, palette, EP fallback prohibition, DB PII, submodule policy, P12 numerical tolerances.
+- `MEMORY.md` §"Orchestrator model gate" — Haiku/Instant refused at `anamnesis.py bootstrap` time.
+
+Operational rules unique to your run-time behaviour (not duplicated in MEMORY.md):
+
+- **Halt and ask** at the interactive P0 gates (`P0_lang` / `P0_sec_email` / `P0_palette`) if no user reply and no `USER.md` sticky exists. The `anamnesis.py advance` watchdog will refuse to move past these gates on a non-whitelisted source — do not work around it.
+- **Never write to DB on failure** — `P_DB_INDEX` runs only when `P12_final_audit` is `pass`/`warn` AND `P_INCIDENT_POSTCHECK` reports `flagged: []`. The advance watchdog will not advance you past `P_INCIDENT_POSTCHECK` if either is failing.
 
 ## Commands you will run
 
@@ -64,7 +64,8 @@ For per-gate rules, the full whitelist of allowed `source` values, and rejection
 |---|---|
 | First-time setup | `python anamnesis.py init` (builds `db/equity_kb.sqlite` from `db/schema/`) |
 | Pre-flight | `pytest -q` (must be green) and `python tools/research/validate_workflow_meta.py` (validates Anamnesis Research's root contract; pass `--target er` to also check the ER submodule contract) |
-| Bootstrap a run dir | `python tools/io/run_dir.py --company <slug> --date <YYYY-MM-DD> --run-id <hex>` |
+| Bootstrap a run dir | `python anamnesis.py bootstrap --company <name> --date <YYYY-MM-DD> --orchestrator-model <your model id>` — **you must declare your own model id** (e.g. `claude-opus-4-7`, `claude-sonnet-4-6`). The CLI refuses Haiku/Instant families because they have repeatedly skipped P0 gates and red-team phases (see `INCIDENTS.md` I-001, I-002). Subagents you delegate to may still use Haiku — the gate only applies to the orchestrator. |
+| Before every phase | `python anamnesis.py advance --run-dir <path>` — externalised watchdog. Tells you which phase to run next, and **refuses (exit 1)** if a predecessor's `produces[]` artifact is missing or an interactive P0 gate has a non-whitelisted `source`. Call this between phases instead of advancing from memory; the CLI is the floor against silent step-skipping. |
 | P3 Porter schema gate | `python tools/research/validate_porter_analysis.py --run-dir <path>` (must pass before P3.5; reruns at P5 entry — `INCIDENTS.md` I-004) |
 | P5 HTML gate | `python tools/research/validate_report_html.py --run-dir <path> --lang <cn\|en>` (must pass before P6/P7) |
 | Delivery tree check | `python tools/io/validate_run_artifacts.py --run-dir <path>` (root must contain only standard subfolders; HTML lives in `research/`, cards in `cards/`) |

@@ -37,7 +37,8 @@ def test_status_runs() -> None:
 
 def test_bootstrap_creates_run_dir(tmp_path: Path) -> None:
     res = _run("bootstrap", "--company", "Apple", "--date", "2026-04-28",
-                "--run-id", "clitest1", "--output-root", str(tmp_path))
+                "--run-id", "clitest1", "--output-root", str(tmp_path),
+                "--orchestrator-model", "claude-opus-4-7")
     assert res.returncode == 0, res.stderr
     expected = tmp_path / "Apple_2026-04-28_clitest1"
     assert expected.exists()
@@ -46,3 +47,12 @@ def test_bootstrap_creates_run_dir(tmp_path: Path) -> None:
     assert (expected / "cards").exists()
     assert (expected / "validation").exists()
     assert "Next steps" in res.stdout
+
+
+def test_bootstrap_refuses_haiku(tmp_path: Path) -> None:
+    res = _run("bootstrap", "--company", "Apple", "--date", "2026-04-28",
+                "--run-id", "clitest_haiku", "--output-root", str(tmp_path),
+                "--orchestrator-model", "claude-haiku-4-5")
+    assert res.returncode == 2, res.stderr
+    assert "haiku" in res.stderr.lower()
+    assert not (tmp_path / "Apple_2026-04-28_clitest_haiku").exists()

@@ -74,5 +74,9 @@ def build_context(host_label: str = "Anamnesis Research harness", invoked_by: st
         "Hard reminders (the two recurring failure modes):",
         "- Interactive P0 gates (P0_lang / P0_sec_email / P0_palette) cannot be auto-defaulted. Auto mode does not waive them. Halt and ask if no user_response and no USER.md sticky exists. (See INCIDENTS I-001.)",
         "- The locked HTML template applies to EVERY company — public, private, fund, family office, government. There is no scope-limited / institution-compatible / simplified bypass. Fill the locked skeleton with proxies and label gaps; never hand-write a simplified report. (See INCIDENTS I-002.)",
+        "",
+        "Bootstrap + advance discipline (externalised state machine — the floor against silent step-skipping):",
+        "- Bootstrap a run dir via `python anamnesis.py bootstrap --company <name> --date <YYYY-MM-DD> --orchestrator-model <your-own-model-id>`. The CLI refuses Haiku/Instant families; subagents may still use them. Declare yourself honestly — see MEMORY.md §Orchestrator model gate.",
+        "- BEFORE every phase, run `python anamnesis.py advance --run-dir <run_dir>`. It returns the next phase id + agent/tool/produces and exits non-zero if a predecessor artifact is missing or an interactive P0 gate has a non-whitelisted source. Do not advance from memory; the watchdog catches what prose cannot.",
     ]
     return "\n".join(lines)

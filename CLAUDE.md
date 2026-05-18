@@ -124,17 +124,19 @@ Hook shell commands must resolve their script path independent of cwd (including
 
 ## Hard floor (do not violate without explicit user override in the same turn)
 
-- **Never skip `P_INCIDENT_PRECHECK`.** A run that did not pre-check is not deliverable.
-- **Never skip `P5_7_RED_TEAM` or `P10_7_RED_TEAM`.** Attackers are not QC peers.
-- **Never skip `P_INCIDENT_POSTCHECK`** before `P_DB_INDEX`. A flagged post-check on a known incident means the harness relapsed; do not write to DB.
-- **Never skip P12.** The four-layer audit (numerical reconciliation / PNG OCR / web third-check / DB cross-validate) is the paying-customer gate. `P_DB_INDEX` runs only after P12 passes.
-- **Never bypass a P0 gate** by inventing a default. Cost of guessing wrong = full re-run.
-- **Never edit the locked HTML template** during P5. Substitute `{{PLACEHOLDER}}` markers only; the SHA256 pin in `skills_repo/er/tests/test_extract_report_template.py` will catch you.
-- **Never accept a simplified HTML report.** After P5, run `tools/research/validate_report_html.py`; line-count/section/JS/template-marker failure means the writer didn't use the locked template — rerun P5 before P6/P7. There is no "institution-compatible" / "private-company" / "scope-limited" bypass for the locked template. If issuer financials are unavailable, fill the locked sections with best-available proxies (AUM/strategy/holdings/manager filings) and label gaps inline; do not drop sections.
-- **Never invent a packaging profile.** `structure_conformance.json -> profile` must be one of the four whitelisted in `workflow_meta.json -> packaging_profiles`. Strings like `institution_compat_*`, `private_company_*`, `scope_limited_*` are fabricated and will be rejected.
-- **Never invent a status string.** `report_validation.txt`'s top-line status is `pass | warn | critical`. `pass_with_scope_limitations`, `not_applicable`, `partial_pass`, etc. are fabricated. Same for `structure_conformance.json -> html_template_gate.status` — must be the literal output of `validate_report_html.py`, not a hand-written verdict.
-- **Never persist user emails to the DB.** SEC EDGAR email is a runtime arg only. `tests/test_db_pii.py` regression-tests no TEXT column matches an email regex after a fixture run.
-- **Never edit the copies under `skills_repo/er/` or `skills_repo/ep/`.** That path is submodule-managed. If the user is changing upstream skill behavior, they work in the sibling clones (`../Equity Research Skill/`, `../Equity Photo Skill/`) and bump the SHA here when ready.
+The substantive hard-floor lists live in `MEMORY.md` — it's frozen verbatim into `meta/system_prompt.frozen.txt` at session start, so the model already has these rules in context. Pointers:
+
+- `MEMORY.md` §"Never-skip phases" (`P_INCIDENT_PRECHECK`, `P5_7_RED_TEAM` / `P10_7_RED_TEAM`, `P12`, `P_INCIDENT_POSTCHECK`, the four P0 gates).
+- `MEMORY.md` §"Locked template invariants" (locked HTML skeleton, no simplified bypass, packaging-profile whitelist, status-string whitelist — all from `INCIDENTS.md` I-002).
+- `MEMORY.md` §"Hard rules" (logo, palette, EP no-fallback, DB PII / `tests/test_db_pii.py`, submodule policy, P12 tolerances).
+- `MEMORY.md` §"Orchestrator model gate" (Haiku/Instant refused at `anamnesis.py bootstrap`).
+
+Single-source-of-truth is intentional. Same rule in five files = drift risk; one canonical place + pointers = grep-once, change-once. To modify a hard-floor rule, edit `MEMORY.md` (and the relevant enforcer — e.g. `tools/audit/reconcile_numbers.py` for tolerances) in the same commit; everything else just points back here.
+
+Maintainer-facing additions specific to this file:
+
+- **Phase-advance watchdog discipline.** Runtime phase advancement is externalised via `python anamnesis.py advance --run-dir <X>` (`tools/io/advance.py`). If you change `workflow_meta.json` phase order, retry targets, or `blocking` flags, also re-run `pytest -q` and verify `GATE_SOURCE_WHITELIST` in `tools/io/advance.py` still matches `references/p0_gates.md`.
+- **Hook substance lives in `tools/io/incident_trigger.py`.** Both `.claude/hooks/inject_incidents.py` and `.codex/hooks/inject_incidents.py` are thin adapters over this module. Edit the shared module, not the per-host shells.
 
 ## Numerical tolerances (P12 layer 1) — change in two places
 

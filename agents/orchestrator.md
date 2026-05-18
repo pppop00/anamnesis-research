@@ -42,14 +42,12 @@ The prose below uses the dotted shorthand (P1, P1.5, P2.6, P5.7, …) that maps 
 | P0 — DB precheck | `P0_DB_PRECHECK` |
 | P1 — parallel research | `P1_parallel_research` |
 | P1.5 — edge insight | `P1_5_edge` |
-| P2 — financial analysis | `P2_fin_analysis` |
-| P2.5 — prediction waterfall | `P2_5_waterfall` |
+| P2 — financial analysis + waterfall + Sankey (consolidated) | `P2_analysis` |
 | P2.6 — macro QC peers | `P2_6_qc_macro` |
 | P3 — Porter analysis | `P3_porter` |
 | P3.5 — Porter QC peers | `P3_5_qc_porter` |
 | P3.6 — QC resolution merge | `P3_6_qc_merge` |
 | P3.7 — cross-validation | `P3_7_X_VALIDATE` |
-| P4 — Sankey injection | `P4_sankey` |
 | P5 — HTML report writer | `P5_html` |
 | P5_gate — HTML structural gate | `P5_html_gate` |
 | P5.5 — final report data validator | `P5_5_data_val` |
@@ -74,7 +72,7 @@ The prose below uses the dotted shorthand (P1, P1.5, P2.6, P5.7, …) that maps 
 ### 1. Bootstrap
 
 1. Compute `RunID = secrets.token_hex(4)`. Compute `Date = today as YYYY-MM-DD`.
-2. Call `tools/io/run_dir.py --company "<placeholder>" --date <Date> --run-id <RunID>` (you will rename later if intent resolution disagrees).
+2. Call `python anamnesis.py bootstrap --company "<placeholder>" --date <Date> --run-id <RunID> --orchestrator-model <your-model-id>` (you will rename later if intent resolution disagrees). The `--orchestrator-model` argument is **required and declares your own model id** (read it from your own system prompt — e.g. `claude-opus-4-7`, `claude-sonnet-4-6`). The CLI refuses Haiku/Instant families because they have historically skipped P0 gates and red-team phases (`INCIDENTS.md` I-001, I-002). Subagents you delegate to in later phases may still use Haiku — the gate only applies to you, the orchestrator. If the gate refuses, halt and ask the user to re-invoke the skill with an Opus or Sonnet model.
 3. Append `phase: bootstrap, event: started` to `meta/run.jsonl`.
 4. Write `meta/system_prompt.frozen.txt` containing your current system prompt verbatim. Your frozen prompt **must** include `MEMORY.md` and `INCIDENTS.md` verbatim — these are the load-bearing project memory and institutional failure log.
 5. Snapshot `workflow_meta.json` to `meta/workflow_meta.snapshot.json`.
@@ -144,9 +142,15 @@ Outputs land at `research/financial_data.json`, `research/macro_factors.json`, `
 
 Sequential. Delegate to `skills_repo/er/agents/edge_insight_writer.md` with all three P1 outputs as input. Output: `research/edge_insights.json`.
 
-### 10. P2 / P2.5 — analysis + waterfall
+### 10. P2_analysis — analysis + waterfall + Sankey (consolidated)
 
-Run inline (these are orchestrator-level phases per ER's spec). Compute `research/financial_analysis.json` then `research/prediction_waterfall.json`. If you need a subagent for a complex analysis step, delegate to a fresh window with the `research` + `io` toolsets.
+Run inline as one phase (these were P2_fin_analysis / P2_5_waterfall / P4_sankey before consolidation; they always ran in lock-step and produced linked artifacts). Internal order:
+
+1. Write `research/financial_analysis.json` (the analysis core).
+2. Write `research/prediction_waterfall.json` (uses the analysis as input).
+3. Append the Sankey payload into `research/financial_analysis.json` so the locked HTML template's `sankeyActualData` / `sankeyForecastData` variables can be filled at P5.
+
+All three substeps must complete before `P2_6_qc_macro` reads either artifact — emit one `phase_exit` for `P2_analysis` only after all three are on disk. If you need a subagent for a complex analysis step, delegate to a fresh window with the `research` + `io` toolsets.
 
 ### 11. P2.6 — macro QC peers, parallel
 
@@ -165,9 +169,10 @@ Apply the QC scoring math from `MEMORY.md` exactly: `weighted = 0.34·draft + 0.
 
 Delegate to `agents/cross_validator.md` (it uses `tools/audit/db_cross_validate.py`). Output: `research/cross_validation.json`. CRITICAL findings (self-history YoY mismatch >5pp; sector_macro_identity in mode A) block the next phase.
 
-### 14. P4 / P5 / P5.5 / P6 — report writing + validation
+### 14. P5 / P5.5 / P6 — report writing + validation
 
-- P4: inject Sankey payload into `financial_analysis.json`.
+(Sankey injection used to be its own phase P4_sankey; it is now folded into `P2_analysis`.)
+
 - P5: extract the locked HTML skeleton via `tools/research/extract_template.py --lang <cn|en> --run-dir <run_dir> --sha256`. Verify `research/_locked_<lang>_skeleton.html` exists on disk before delegating — if it does not, halt; do not let the report writer "skip" extraction. Delegate to `report_writer_{cn,en}.md` with all JSONs as input. Substitute `{{PLACEHOLDER}}` markers only — never edit structure. The final report must be produced by filling the extracted `_locked_<lang>_skeleton.html`; hand-written replacement HTML is invalid even if the data is correct. **There is no institution-compatible / private-company / scope-limited bypass.** Every company — public, private fund, hedge fund, family office, government entity, anything — fills the same locked skeleton. When issuer-level statements are unavailable (e.g. RA Capital, a private investment manager), the report writer fills the locked sections with the best available proxies (AUM, strategy, top holdings, manager-level filings, peer macro, etc.) and labels residual gaps inline; it does **not** drop sections, shorten the template, or emit a hand-written page.
 - P5_gate: immediately run `python tools/research/validate_report_html.py --run-dir <run_dir> --lang <cn|en>` **and** `python tools/research/validate_porter_analysis.py --run-dir <run_dir>`. **Capture both exit codes; both must be 0.** `validate_report_html.py` failing on line count (<500 lines), missing section IDs, missing `LOCKED JAVASCRIPT`, missing chart variables, or unreplaced `{{PLACEHOLDER}}` → discard that HTML and rerun P5 from the extracted skeleton. `validate_porter_analysis.py` failing on `{scores, narrative}` flat shape, missing force keys, or invalid scores → halt and rerun **Phase 3** (Porter draft) with the correct per-force schema; do not let P5 paper over a malformed `porter_analysis.json`. You may not paraphrase either gate's verdict, you may not declare them `not_applicable`, and you may not invent statuses like `pass_with_scope_limitations`. The HTML gate's JSON output is the authoritative `html_template_gate` value carried into P6.
 - P5.5: delegate to `final_report_data_validator.md`. CRITICAL findings → loop back to P5 with the report writer's same agent (cap 2). 0 CRITICAL → proceed.
@@ -253,6 +258,12 @@ Do not list every intermediate JSON in the handoff unless the user asks for audi
 - **Always** record `phase_enter` / `phase_exit` events to `meta/run.jsonl` so resume works after Ctrl-C.
 - **Always** run `P_INCIDENT_PRECHECK` before P0_intent and `P_INCIDENT_POSTCHECK` after P12 — they are non-skippable. A run that did not pre-check is not deliverable; a run that flagged post-check must not write to DB.
 - **Never** treat the red-team attackers (`agents/attackers/red_team_*.md`) as QC peers. Peers vote on agreement; attackers try to falsify. A clean attacker output (zero criticals, zero warns) is a valid outcome and you should not pressure them to find issues. A defective output (criticals dismissed without revision) is a release-blocker.
+
+## Phase-advance watchdog
+
+Before each phase, call `python anamnesis.py advance --run-dir <run_dir>`. It returns the next phase id and metadata (agent/tool/produces), or exits 1 with a reason if a predecessor's declared output is missing on disk or an interactive P0 gate's `source` is not in the whitelist. This is the externalised state machine — the prose contract here is the playbook, `advance` is the referee. If `advance` blocks, **do not** rationalise around it; surface the reason to the user and fix the underlying state (re-run the missing phase, ask the gate, etc.).
+
+The watchdog does not replace per-phase validators (`validate_report_html.py`, `validate_porter_analysis.py`, `tools/audit/aggregate_p12.py`); it sits beneath them as a cheap structural check that the right phases ran in the right order with their declared outputs present.
 
 ## Resume semantics
 

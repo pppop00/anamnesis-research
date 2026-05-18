@@ -7,6 +7,10 @@ description: Project-level invariants frozen into the system prompt at session s
 
 These rules are **load-bearing** and apply to every run. They are read once at session start and frozen into `meta/system_prompt.frozen.txt`. `INCIDENTS.md` is loaded alongside this file at the same moment and into the same frozen prompt — it carries the project's institutional memory of past failure modes (one entry per incident, with the load-bearing rule that prevents recurrence). Read both. The contracts compose: anything in `INCIDENTS.md` overrides nothing here, and nothing here waives anything in `INCIDENTS.md`.
 
+## Orchestrator model gate
+
+`anamnesis.py bootstrap` requires `--orchestrator-model <your-model-id>` and refuses Haiku/Instant families. Reason: the harness has 35+ phases, four P0 interactive gates, and an incident pre/post-check loop. Fast/cheap models historically compressed this contract aggressively and skipped interactive gates (`INCIDENTS.md` I-001) and the locked template (`I-002`). The gate is enforced by `tools/io/model_gate.py`; gate logic is substring-based on the declared id so future Opus/Sonnet suffixes pass without code change. Subagents (logo, card-content, scrape workers) may still use Haiku — only the orchestrator declared at bootstrap is gated.
+
 ## P0 gates — ordered, blocking, not skippable
 
 1. **`P0_intent`** — resolve the user's prompt to a concrete `{ticker, company, listing}` triple. If ambiguous, ask **once**.
@@ -16,12 +20,32 @@ These rules are **load-bearing** and apply to every run. They are read once at s
 
 `USER.md` may pre-fill any of P0_lang / P0_sec_email / P0_palette as sticky preferences.
 
+## Never-skip phases
+
+These five phases are non-skippable in any run, fast or slow. They exist because real prior failures showed up when each one was bypassed — the rule and the incident travel together.
+
+- **`P_INCIDENT_PRECHECK`** — read `INCIDENTS.md` end-to-end and write `incident_precheck.acknowledged` events before `P0_intent`. A run that did not pre-check is not deliverable.
+- **`P5_7_RED_TEAM` and `P10_7_RED_TEAM`** — the red-team attackers (`agents/attackers/red_team_numeric.md`, `red_team_narrative.md`) are **not** QC peers. QC peers vote and average; attackers try to falsify. Critical findings loop the writer once (cap = 1 per phase); a second critical halts the run.
+- **`P12_final_audit`** — the four-layer audit (reconcile / OCR / web third-check / DB cross-validate). The paying-customer gate. Skip only on an explicit user instruction in the same turn, and log a `phase_skipped` event when you do.
+- **`P_INCIDENT_POSTCHECK`** before `P_DB_INDEX` — a flagged post-check on a known incident means the harness relapsed. **`P_DB_INDEX` does not run** if P12 failed or post-check is flagged.
+- **The four P0 gates** — `P0_intent` (resolution), `P0_lang` / `P0_sec_email` / `P0_palette` (interactive). Auto-mode does not waive interactive gates; inventing a default is a P0 violation (`INCIDENTS.md` I-001). The gate-source whitelist is in `references/p0_gates.md` and enforced at `python anamnesis.py advance` time.
+
+## Locked template invariants
+
+These four rules all stem from the same failure family (`INCIDENTS.md` I-002): the locked HTML report skeleton is universal — public, private fund, hedge fund, family office, government entity, anything — and there is no scope-limited bypass.
+
+- **Locked HTML skeleton.** `skills_repo/er/agents/report_writer_{cn,en}.md` is SHA256-pinned. P5 must extract via `tools/research/extract_template.py` and substitute `{{PLACEHOLDER}}` markers only; do not edit structure. When issuer-level financials are unavailable, fill the locked sections with proxies (AUM / strategy / holdings / manager filings) and label gaps inline. Never drop sections, shorten the template, or emit a hand-written page.
+- **No simplified HTML accepted.** After P5, `tools/research/validate_report_html.py` is fail-closed. Line-count / section / JS / template-marker failure means P5 did not use the locked skeleton — rerun P5 before P6/P7. There is no "institution-compatible" / "private-company" / "scope-limited" / "simplified" bypass.
+- **Packaging profile whitelist.** `structure_conformance.json -> profile` must be one of the four `strict_*` profiles in `workflow_meta.json -> packaging_profiles`. Strings like `institution_compat_*`, `private_company_*`, `scope_limited_*`, `sector_pack` are fabrications and will be rejected.
+- **Status string whitelist.** `report_validation.txt`'s top-line status and `structure_conformance.json -> html_template_gate.status` are exactly `pass | warn | critical`. Hand-written verdicts (`pass_with_scope_limitations`, `not_applicable`, `partial_pass`) are fabrications and not deliverable.
+
 ## Hard rules
 
-- **Locked HTML template.** `skills_repo/er/agents/report_writer_{cn,en}.md` is SHA256-pinned. Phase P5 must extract the skeleton via `tools/research/extract_template.py` and substitute `{{PLACEHOLDER}}` only; never edit structure.
-- **Logo save order.** P7 must (a) create the per-run output folder first, (b) save `logo_official.png` directly into it, (c) set `logo_asset_path` to the absolute path inside that folder, (d) only then proceed.
+- **Logo save order.** P7 must (a) create the per-run output folder first, (b) save `logo_official.png` directly into it, (c) set `logo_asset_path` to the absolute path inside that folder, (d) only then proceed. Final asset must be a transparent PNG/WEBP — no opaque white canvas (`INCIDENTS.md` I-006).
 - **Palette consistency.** All six cards in one run must use the same `--palette`. The palette is **not** stored in `card_slots.json`; mismatched single-card re-renders cause silent header colour drift.
 - **No fallback copy generation in EP.** `card_slots.json` must be complete before render; missing keys abort at load time.
+- **No user emails persisted to the DB.** SEC EDGAR email is a runtime arg only. Live in `meta/run.json` as `sec_email` / `sec_user_agent`; never in any DB TEXT column. `public_user_agent` (PII-free) is the only User-Agent for non-SEC fetches (`INCIDENTS.md` I-003). Regression: `tests/test_db_pii.py`.
+- **Submodules are SHA-pinned, not editable in-place.** `skills_repo/er/` and `skills_repo/ep/` are pinned via `.gitmodules`. Behaviour changes there happen in the sibling clones (`../Equity Research Skill/`, `../Equity Photo Skill/`); you bump the SHA here only when ready.
 - **Numerical reconciliation tolerance** (P12 layer 1):
   - margins / ratios / percentage points: ±0.5pp
   - currency amounts: ±0.5% relative

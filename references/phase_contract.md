@@ -24,14 +24,12 @@ The prose below uses dotted shorthand (P1.5, P3.6, P5.7) that maps to canonical 
 | P0 — DB precheck | `P0_DB_PRECHECK` |
 | P1 — parallel research | `P1_parallel_research` |
 | P1.5 — edge insight | `P1_5_edge` |
-| P2 — financial analysis | `P2_fin_analysis` |
-| P2.5 — prediction waterfall | `P2_5_waterfall` |
+| P2 — financial analysis + waterfall + Sankey (consolidated) | `P2_analysis` |
 | P2.6 — macro QC peers | `P2_6_qc_macro` |
 | P3 — Porter analysis | `P3_porter` |
 | P3.5 — Porter QC peers | `P3_5_qc_porter` |
 | P3.6 — QC resolution merge | `P3_6_qc_merge` |
 | P3.7 — cross-validation | `P3_7_X_VALIDATE` |
-| P4 — Sankey injection | `P4_sankey` |
 | P5 — HTML report writer | `P5_html` |
 | P5_gate — HTML structural gate | `P5_html_gate` |
 | P5.5 — final report data validator | `P5_5_data_val` |
@@ -51,21 +49,19 @@ The prose below uses dotted shorthand (P1.5, P3.6, P5.7) that maps to canonical 
 | Incident post-check | `P_INCIDENT_POSTCHECK` |
 | DB index | `P_DB_INDEX` |
 
-## The 35 phases at a glance
+## The 33 phases at a glance
 
 ```
 P_INCIDENT_PRECHECK ★
   → P0_intent → P0_lang → P0_sec_email → P0_palette → P0M_meta → P0_DB_PRECHECK
   → P1 parallel research (financial / macro / news, 3 subagents)
   → P1.5 edge insight
-  → P2 financial analysis
-  → P2.5 prediction waterfall
+  → P2_analysis: financial analysis + prediction waterfall + Sankey payload (consolidated)
   → P2.6 macro QC peer A/B (parallel)
   → P3 Porter analysis
   → P3.5 Porter QC peer A/B (parallel)
   → P3.6 QC resolution merge
   → P3.7 cross-validation (history / peer / macro drift)
-  → P4 Sankey payload
   → P5 HTML report writer (locked SHA256-pinned template)
   → P5_gate validate_report_html.py (line/section/JS/marker hard gate)
   → P5.5 final data validator (CFA-level)

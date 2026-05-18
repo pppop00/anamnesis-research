@@ -9,9 +9,18 @@ Usage:
     anamnesis.py init
         Apply DB migrations to db/equity_kb.sqlite.
 
-    anamnesis.py bootstrap --company Apple --date 2026-04-28
+    anamnesis.py bootstrap --company Apple --date 2026-04-28 --orchestrator-model claude-opus-4-7
         Create output/{slug}_{date}_{run_id}/ with the standard subfolders.
+        --orchestrator-model is required: the LLM driving the run declares itself,
+        and the CLI refuses Haiku/Instant families (subagents may still use them).
         Echoes the run dir path and the next step (read SKILL.md in the host).
+
+    anamnesis.py advance --run-dir <path> [--format human|json]
+        Externalised phase-advance watchdog. Reads meta/run.jsonl + meta/gates.json,
+        compares against workflow_meta.json, and either prints the next phase to
+        run (exit 0) or refuses with a reason: missing predecessor artifact, or an
+        interactive P0 gate satisfied by a non-whitelisted source. Call this
+        before each phase if you want a hard floor against silent step-skipping.
 
     anamnesis.py precheck --run-dir <path> --ticker AAPL [--sector ...] [--geography US] [--period FY2026Q2]
         Run P0_DB_PRECHECK and write db_export/peer_context.json + db_export/prior_financials_used.json.
@@ -59,8 +68,18 @@ def cmd_init(args: argparse.Namespace) -> int:
 # ─────────────────────────────────────────────────────────────────────
 
 def cmd_bootstrap(args: argparse.Namespace) -> int:
+    from tools.io.model_gate import classify
+
+    gate = classify(args.orchestrator_model)
+    if not gate.allowed:
+        print(gate.message, file=sys.stderr)
+        return 2
+    if gate.message:
+        print(gate.message, file=sys.stderr)
+
     cmd = [sys.executable, str(TOOLS / "io" / "run_dir.py"),
-           "--company", args.company, "--date", args.date]
+           "--company", args.company, "--date", args.date,
+           "--orchestrator-model", args.orchestrator_model]
     if args.run_id:
         cmd += ["--run-id", args.run_id]
     if args.output_root:
@@ -79,6 +98,16 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     print(f"     python anamnesis.py audit --run-dir '{run_dir}'")
     print(f"     python anamnesis.py index --run-dir '{run_dir}'")
     return 0
+
+
+# ─────────────────────────────────────────────────────────────────────
+# advance — phase advancement watchdog
+# ─────────────────────────────────────────────────────────────────────
+
+def cmd_advance(args: argparse.Namespace) -> int:
+    cmd = [sys.executable, str(TOOLS / "io" / "advance.py"),
+           "--run-dir", args.run_dir, "--format", args.format]
+    return _run(cmd)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -202,7 +231,22 @@ def main(argv: list[str] | None = None) -> int:
     p_boot.add_argument("--date", required=True)
     p_boot.add_argument("--run-id", default=None)
     p_boot.add_argument("--output-root", default=None)
+    p_boot.add_argument(
+        "--orchestrator-model",
+        required=True,
+        help=(
+            "Model id of the LLM driving this run (e.g. claude-opus-4-7, "
+            "claude-sonnet-4-6). Refused for Haiku/Instant families. "
+            "Subagents may still use Haiku — this gate is only for the orchestrator."
+        ),
+    )
     p_boot.set_defaults(func=cmd_bootstrap)
+
+    p_adv = sub.add_parser("advance",
+        help="Phase-advance watchdog — refuses to proceed past unsatisfied gates")
+    p_adv.add_argument("--run-dir", required=True)
+    p_adv.add_argument("--format", default="human", choices=("human", "json"))
+    p_adv.set_defaults(func=cmd_advance)
 
     p_pre = sub.add_parser("precheck", help="P0_DB_PRECHECK — peer/prior/macro context")
     p_pre.add_argument("--run-dir", required=True)
