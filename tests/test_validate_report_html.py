@@ -111,7 +111,7 @@ def _locked_like_html(
 
     Notable changes from pre-v3:
       - Section IV: single SVG (#chart-sankey-actual), NO #chart-sankey-forecast.
-      - Section V: single SVG (#chart-porter-bars) + 5 .porter-force-block divs,
+      - Section V: single SVG (#chart-porter-pentagon) + 5 .porter-force-block divs,
         NO #porter-panel-*, NO .porter-text, NO #chart-radar-*.
       - JS: only sankeyActualData (sankeyForecastData removed).
     """
@@ -140,7 +140,7 @@ def _locked_like_html(
 <div class="section" id="section-prediction"></div>
 <div class="section" id="section-sankey"><svg id="chart-sankey-actual"></svg></div>
 <div class="section" id="section-porter">
-<svg id="chart-porter-bars"></svg>
+<svg id="chart-porter-pentagon"></svg>
 <div class="porter-analysis-blocks">{porter_blocks}</div>
 </div>
 <div class="section" id="section-appendix"></div>
@@ -153,7 +153,7 @@ const sankeyActualData = {sa};
 const porterScores = [3,3,3,3,3];
 function drawWaterfall() {{}}
 function drawSankey() {{}}
-function drawPorterBars() {{}}
+function drawPorterPentagon() {{}}
 </script>
 {filler}
 </body>
@@ -173,7 +173,7 @@ def _locked_template_html(**kwargs) -> str:
     base = _locked_like_html(porter_valid=True, **kwargs)
     placeholder_section = (
         '<div class="section" id="section-porter">'
-        '<svg id="chart-porter-bars"></svg>'
+        '<svg id="chart-porter-pentagon"></svg>'
         '<div class="porter-analysis-blocks">{{PORTER_ANALYSIS_BLOCKS}}</div>'
         "</div>"
     )
@@ -581,3 +581,134 @@ def test_v3_template_mode_skips_force_block_count(tmp_path: Path) -> None:
         "porter-force-block" in e and "exactly 5" in e for e in result["errors"]
     ), result["errors"]
     assert not any("unreplaced locked-template placeholders" in e for e in result["errors"]), result["errors"]
+
+
+# ---------- Writing-style gate (Codex feedback round 3 + user feedback) ----------
+# Three rules enforced (single source: skills_repo/er/references/report_style_guide_cn.md):
+#   1. Bare "+" in front of an absolute amount in prose → fail
+#   2. "+N%" without explicit 同比/环比/年化/较/相比 comparator → fail
+#   3. English abbreviations (CC / YoY / QoQ / FX / CAGR) in body prose → fail,
+#      unless a first-mention parens form like "恒定汇率（CC）" appears elsewhere.
+
+from bs4 import BeautifulSoup
+from tools.research.validate_report_html import _validate_writing_style
+
+
+def _wrap_prose(prose_html: str) -> BeautifulSoup:
+    """Minimal HTML around a prose-bearing div so the selector matches."""
+    return BeautifulSoup(
+        f"""<html><body>
+        <section id="section-summary">
+          <p class="summary-para">{prose_html}</p>
+        </section>
+        </body></html>""",
+        "html.parser",
+    )
+
+
+def test_writing_style_bare_plus_on_absolute_amount_fails() -> None:
+    soup = _wrap_prose("Salesforce 战略投资公允价值净收益+10.17亿美元，放大 GAAP 净利润。")
+    errors, _ = _validate_writing_style(soup)
+    assert any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_bare_plus_on_pct_without_comparator_fails() -> None:
+    soup = _wrap_prose("Q1收入6.398亿美元+34%，订单能见度尚稳。")
+    errors, _ = _validate_writing_style(soup)
+    assert any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_plus_after_tongbi_passes() -> None:
+    """`同比+3.6%` is allowed — comparator base is explicit."""
+    soup = _wrap_prose("营业利润率同比+1.05个百分点，盈利能力小幅扩张。")
+    errors, _ = _validate_writing_style(soup)
+    assert not any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_plus_after_huanbi_passes() -> None:
+    soup = _wrap_prose("Q1 收入 6.4 亿美元，环比+12%。")
+    errors, _ = _validate_writing_style(soup)
+    assert not any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_plus_after_zengjia_passes() -> None:
+    """Comparator verb instead of 同比/环比 also unlocks the +."""
+    soup = _wrap_prose("毛利率较去年增加+0.8个百分点。")
+    errors, _ = _validate_writing_style(soup)
+    assert not any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_bans_CC_without_first_mention() -> None:
+    soup = _wrap_prose("cRPO 同比按 CC 增长 13%，弱于按报告值口径。")
+    errors, _ = _validate_writing_style(soup)
+    assert any("'CC'" in e for e in errors), errors
+
+
+def test_writing_style_bans_YoY_in_prose() -> None:
+    soup = _wrap_prose("cRPO 351 亿美元同比按报告值 YoY 增长16%，反映在手订单增厚。")
+    errors, _ = _validate_writing_style(soup)
+    assert any("'YoY'" in e for e in errors), errors
+
+
+def test_writing_style_first_mention_parens_whitelists_CC() -> None:
+    """`恒定汇率（CC）` once at the top legitimises later bare CC uses."""
+    soup = BeautifulSoup(
+        """<html><body>
+        <section id="section-summary">
+          <p class="summary-para">恒定汇率（CC）口径下有机收入约 9%。</p>
+          <p class="summary-para">cRPO 同比按 CC 增长 13%。</p>
+        </section>
+        </body></html>""",
+        "html.parser",
+    )
+    errors, _ = _validate_writing_style(soup)
+    assert not any("'CC'" in e for e in errors), errors
+
+
+def test_writing_style_metrics_table_cells_not_scanned() -> None:
+    """The metrics table's 4th column is allowed bare +/-; it has its own header.
+    Make sure the writing-style validator does NOT touch metrics-table cells."""
+    soup = BeautifulSoup(
+        """<html><body>
+        <section id="section-financials">
+          <table class="metrics-table"><tbody>
+            <tr><td>毛利率</td><td>77.7%</td><td>76.9%</td><td>+0.8pp</td></tr>
+          </tbody></table>
+        </section>
+        </body></html>""",
+        "html.parser",
+    )
+    errors, _ = _validate_writing_style(soup)
+    assert errors == [], errors
+
+
+def test_writing_style_porter_force_block_prose_scanned() -> None:
+    """Porter force-block prose paragraphs are within scope."""
+    soup = BeautifulSoup(
+        """<html><body>
+        <div class="porter-force-block">
+          <h3>供应商议价能力 — 2/5</h3>
+          <p class="porter-mechanism">Salesforce 业务本质是应用层 SaaS，CC 增速 9%，capex+0.4 亿美元。</p>
+        </div>
+        </body></html>""",
+        "html.parser",
+    )
+    errors, _ = _validate_writing_style(soup)
+    # Both 'CC' (no first-mention) AND 'capex+0.4' (bare +) should trip.
+    assert any("'CC'" in e for e in errors), errors
+    assert any("bare '+'" in e for e in errors), errors
+
+
+def test_writing_style_in_template_mode_skipped(tmp_path: Path) -> None:
+    """A raw locked-template skeleton has no rendered prose to scan —
+    the wrapper should not run writing-style checks against placeholders."""
+    skeleton = tmp_path / "_locked_cn_skeleton.html"
+    html = tmp_path / "Company_Research_CN.html"
+    # Use the existing locked-template fixture so in_template_mode=True
+    payload = _locked_template_html()
+    skeleton.write_text(payload, encoding="utf-8")
+    html.write_text(payload, encoding="utf-8")
+    result = validate_html_report(html, skeleton)
+    # Template mode: no writing-style errors should appear, even if
+    # placeholder text happens to contain a "+" or "CC".
+    assert not any("writing-style" in e for e in result["errors"]), result["errors"]

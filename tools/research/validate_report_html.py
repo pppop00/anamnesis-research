@@ -35,7 +35,7 @@ REQUIRED_MARKERS = (
     "DATA VARIABLES",
     "drawWaterfall",
     "drawSankey",
-    "drawPorterBars",
+    "drawPorterPentagon",
     "sankeyActualData",
     "porterScores",
     "waterfallData",
@@ -562,6 +562,104 @@ def _validate_sankey_conservation(script_text: str, var_name: str) -> tuple[list
     return errors, warnings
 
 
+# Writing-style gate — enforces the three rules in
+# `skills_repo/er/references/report_style_guide_cn.md` §"符号与比较语规范"
+# and §"中英混杂规范":
+#
+#   (1) Bare "+" must not decorate absolute amounts in prose. A "+" is the
+#       marker for a relative change; gluing it onto a level (revenue, ARR,
+#       FCF, net income) makes the reader misread the absolute as same-period
+#       growth. Allowed only when a comparator (同比 / 环比 / 年化 / 较 /
+#       相比) appears within ~15 chars before the "+".
+#
+#   (2) "+N%" must always carry an explicit comparator base. "Q1收入+34%"
+#       is forbidden; "Q1收入同比增加34%" is required. Subsumed by rule (1)
+#       since "+N%" is just a special case of "+\d".
+#
+#   (3) English abbreviations for ratios / time-frames / units must be
+#       Chinese in body prose. CC → 恒定汇率, YoY → 同比, QoQ → 环比,
+#       FX → 汇率, CAGR → 复合年化增长率. First-mention parenthesised form
+#       like "恒定汇率（CC）" is allowed and whitelists later bare uses.
+#
+# Scope: only "prose" elements (summary paragraphs, trend cards, Porter
+# force-block prose). Excluded: <script>, <table.metrics-table> cells (their
+# column header already provides the comparator), <svg>, <code>, raw
+# template placeholder lines.
+
+_BARE_PLUS_RE = re.compile(
+    r"\+\d+(?:\.\d+)?(?:\s*[-–~至]\s*\d+(?:\.\d+)?)?"  # +34 or +458-462
+    r"\s*(?:%|pp|个百分点|亿|万|百万|千|元|美元|港元|人民币)?"
+)
+_COMPARATOR_BEFORE_PLUS_RE = re.compile(
+    r"(同比|环比|年化|较|相比|约|±|增长|下降|扩张|收窄|提升|增加)"
+)
+
+_BANNED_ABBREVS = ("CC", "YoY", "Y/Y", "QoQ", "Q/Q", "FX", "CAGR")
+_BANNED_ABBREV_RE = re.compile(r"\b(" + "|".join(re.escape(a) for a in _BANNED_ABBREVS) + r")\b")
+# First-mention parens form: "(... CC ...)" or "（... 恒定汇率（CC）...）"
+_FIRST_MENTION_RE = re.compile(r"[（(][^（()）]{0,40}\b(CC|YoY|Y/Y|QoQ|Q/Q|FX|CAGR)\b[^（()）]{0,40}[)）]")
+
+_PROSE_SELECTORS = (
+    "#section-summary .summary-para",
+    "#section-financials .trend-card",
+    ".porter-rating-statement",
+    ".porter-anchor",
+    ".porter-mechanism",
+    ".porter-falsifier",
+    ".porter-signal",
+    ".porter-lookahead",
+    "#section-investment .investment-thesis",
+    ".sankey-analysis-text",
+)
+
+
+def _validate_writing_style(soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Build the first-mention abbreviation whitelist from the entire document
+    # text. If the writer introduces "恒定汇率（CC）" once anywhere in the
+    # report, later bare "CC" uses are allowed.
+    full_text = soup.get_text(" ")
+    first_mention_abbrevs: set[str] = set()
+    for m in _FIRST_MENTION_RE.finditer(full_text):
+        first_mention_abbrevs.add(m.group(1))
+
+    for selector in _PROSE_SELECTORS:
+        for elem in soup.select(selector):
+            text = elem.get_text(" ", strip=True)
+            if not text:
+                continue
+
+            # Rule (1) + (2): bare "+" without comparator context
+            for m in _BARE_PLUS_RE.finditer(text):
+                window_before = text[max(0, m.start() - 15):m.start()]
+                if _COMPARATOR_BEFORE_PLUS_RE.search(window_before):
+                    continue
+                snippet = text[max(0, m.start() - 15):min(len(text), m.end() + 10)]
+                errors.append(
+                    f"writing-style: bare '+' on absolute amount or unannotated change "
+                    f"(no 同比/环比/年化/较/相比 in 15 chars before): "
+                    f"...{snippet}... [in {selector}]"
+                )
+
+            # Rule (3): banned English abbreviation
+            for m in _BANNED_ABBREV_RE.finditer(text):
+                abbrev = m.group(1)
+                if abbrev in first_mention_abbrevs:
+                    continue
+                snippet = text[max(0, m.start() - 10):min(len(text), m.end() + 10)]
+                errors.append(
+                    f"writing-style: English abbreviation '{abbrev}' in body prose "
+                    f"(must be Chinese: CC→恒定汇率, YoY→同比, QoQ→环比, FX→汇率, "
+                    f"CAGR→复合年化增长率; first-mention parens form like "
+                    f"'恒定汇率（CC）' would whitelist later uses): "
+                    f"...{snippet}... [in {selector}]"
+                )
+
+    return errors, warnings
+
+
 def validate_html_report(
     html_path: Path,
     skeleton_path: Path | None = None,
@@ -631,7 +729,7 @@ def validate_html_report(
         "kpi_card": _count(soup, "#section-financials .kpi-card"),
         "trend_card": _count(soup, "#section-financials .trend-card"),
         "sankey_actual_svg": _count(soup, "#chart-sankey-actual"),
-        "porter_bars_svg": _count(soup, "#chart-porter-bars"),
+        "porter_pentagon_svg": _count(soup, "#chart-porter-pentagon"),
         "porter_force_block": _count(soup, ".porter-force-block"),
     }
     expected_min = {
@@ -639,7 +737,7 @@ def validate_html_report(
         "kpi_card": 4,
         "trend_card": 5,
         "sankey_actual_svg": 1,
-        "porter_bars_svg": 1,
+        "porter_pentagon_svg": 1,
     }
     for key, need in expected_min.items():
         got = structural_counts[key]
@@ -669,6 +767,13 @@ def validate_html_report(
     metrics_errors, metrics_warnings = _validate_metrics_table(soup)
     errors.extend(metrics_errors)
     warnings.extend(metrics_warnings)
+
+    # Writing-style gate (rules in `skills_repo/er/references/report_style_guide_cn.md`).
+    # Only runs on rendered reports; raw template mode has nothing to inspect yet.
+    if not in_template_mode:
+        style_errors, style_warnings = _validate_writing_style(soup)
+        errors.extend(style_errors)
+        warnings.extend(style_warnings)
 
     script_text = "\n".join(node.get_text("\n") for node in soup.find_all("script"))
     # Plan v3 Phase A: sankeyForecastData is gone; only sankeyActualData remains.
