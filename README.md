@@ -137,7 +137,7 @@ The Anamnesis Pattern applies to any agent harness where:
 | Automated code review | repeating a known-rejected refactor; suggesting a deprecated API | static-analysis cross-check + "would this work in prod?" challenger |
 | Compliance audit | applying a deprecated control; missing a control that became required | control-coverage matrix + "what's conspicuously absent?" |
 
-The minimum viable Anamnesis harness is: an INCIDENTS-style file + frozen-at-boot + a 2-phase bracket + 2 adversarial agents + a curation command. Anamnesis Research wraps that minimum in an equity-research-specific 33-phase pipeline; your harness can wrap it in something else.
+The minimum viable Anamnesis harness is: an INCIDENTS-style file + frozen-at-boot + a 2-phase bracket + 2 adversarial agents + a curation command. Anamnesis Research wraps that minimum in an equity-research-specific 35-phase pipeline; your harness can wrap it in something else.
 
 Full pattern definition (with anti-patterns, applicability checklist, and required files): `references/anamnesis_pattern.md`.
 
@@ -154,7 +154,7 @@ anamnesis-research/                 # anamnesis-research (originally codenamed e
 ├── MEMORY.md                       # project invariants — frozen at session start
 ├── INCIDENTS.md                    # ★ append-only failure log — frozen at session start
 ├── USER.md                         # per-user preferences (gitignored; copy from .template)
-├── workflow_meta.json              # machine-readable phase/gate contract (33 phases)
+├── workflow_meta.json              # machine-readable phase/gate contract (35 phases)
 ├── anamnesis.py                    # CLI entry — Anamnesis Research's deterministic-phase driver
 │
 ├── .claude/                        # Claude Code project-scoped configuration
@@ -177,7 +177,7 @@ anamnesis-research/                 # anamnesis-research (originally codenamed e
 ├── references/                     # lazy-loaded skill docs
 │   ├── anamnesis_pattern.md        # ★ the methodology, generalised — start here for the pattern
 │   ├── inherited_principles.md     # principles inherited from Anthropic harness/skill design
-│   ├── workflow_diagram.md         # mermaid diagram of the 33-phase pipeline
+│   ├── workflow_diagram.md         # mermaid diagram of the 35-phase pipeline
 │   ├── phase_contract.md           # prose narrative of every phase
 │   ├── p0_gates.md                 # per-gate whitelist + sticky source rules
 │   ├── subagent_toolsets.md        # per-agent toolset matrix
@@ -241,7 +241,7 @@ The model will pull the latest run's digest, draft a candidate `INCIDENTS.md` en
 
 ## What this repo produces
 
-Anamnesis Research applies the pattern to a **33-phase pipeline** that fuses two upstream skills:
+Anamnesis Research applies the pattern to a **35-phase pipeline** that fuses two upstream skills:
 
 - **Equity Research** — multi-agent research → interactive HTML report (locked SHA256-pinned template; no simplified bypass per `INCIDENTS.md` I-002)
 - **Equity Photo** — HTML → 6 fixed-layout PNG social cards (2160×2700, palette-locked)
@@ -283,7 +283,7 @@ After a few runs, the database lets you:
 
 ## Status
 
-The machine-readable orchestration contract is `workflow_meta.json` (33 phases, gates, tools, agents). Upstream skills (`skills_repo/er`, `skills_repo/ep`) are pinned by SHA via `.gitmodules`; submodule bumps are deliberate and logged in `meta/submodule_shas.json` per run. Pre-check and post-check are non-skippable; `P_DB_INDEX` declares `requires: [P12_final_audit, P_INCIDENT_POSTCHECK]` so machine-readable runners cannot bypass either gate.
+The machine-readable orchestration contract is `workflow_meta.json` (35 phases, gates, tools, agents). Upstream skills (`skills_repo/er`, `skills_repo/ep`) are pinned by SHA via `.gitmodules`; submodule bumps are deliberate and logged in `meta/submodule_shas.json` per run. Pre-check and post-check are non-skippable; `P_DB_INDEX` declares `requires: [P12_final_audit, P_INCIDENT_POSTCHECK]` so machine-readable runners cannot bypass either gate.
 
 ---
 

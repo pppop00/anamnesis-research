@@ -1,6 +1,6 @@
 ---
 schema_version: 1
-description: Visual diagram of the Anamnesis Research 33-phase pipeline. Shows the incident-loop bracket, P0 gates, parallel research, QC peers, red-team attackers, P12 audit, and the dual-gate (P12 + postcheck) before P_DB_INDEX. Source-of-truth for sequencing remains workflow_meta.json — this diagram is a reading aid, not a contract.
+description: Visual diagram of the Anamnesis Research 35-phase pipeline. Shows the incident-loop bracket, P0 gates, parallel research, QC peers, red-team attackers, P12 audit, and the dual-gate (P12 + postcheck) before P_DB_INDEX. Source-of-truth for sequencing remains workflow_meta.json — this diagram is a reading aid, not a contract.
 ---
 
 # Anamnesis Research — workflow diagram
@@ -63,9 +63,11 @@ flowchart TD
     P5G -->|exit ≠ 0| P5
     P5G -->|exit 0| P55[P5.5 final_report_data_validator]
     P55 -->|"critical ↩ cap=2"| P5
+    P55 -->|0 critical| P56[P5.6 porter_depth_gate<br/>5 forces × 6 segments]
+    P56 -->|"critical ↩ cap=1"| P3
 
     %% ====== P5.7 RED TEAM ======
-    P55 -->|0 critical| P57fan{{"⭐ P5.7 RED TEAM · parallel"}}
+    P56 -->|pass| P57fan{{"⭐ P5.7 RED TEAM · parallel"}}
     P57fan --> P57N[red_team_numeric]
     P57fan --> P57R[red_team_narrative]
     P57N --> P57join((merge))
@@ -84,9 +86,11 @@ flowchart TD
     P9 --> P10[P10 Validator 1<br/>validate_cards.py]
     P10 --> P105[P10.5 Validator 2<br/>web fact-check]
     P105 -->|"change ↩ cap=3"| P10
+    P105 -->|stable| P106[P10.6 voice_gate<br/>Cards 1-5 worker notes]
+    P106 -->|"critical ↩ cap=1"| P8
 
     %% ====== P10.7 RED TEAM ======
-    P105 -->|stable| P107fan{{"⭐ P10.7 RED TEAM · parallel<br/>PRE-RENDER ONLY · no PNG OCR here"}}
+    P106 -->|pass| P107fan{{"⭐ P10.7 RED TEAM · parallel<br/>PRE-RENDER ONLY · no PNG OCR here"}}
     P107fan --> P107N[red_team_numeric<br/>render-budget · palette · logo path]
     P107fan --> P107R[red_team_narrative<br/>Porter direction · cross-card coherence]
     P107N --> P107join((merge))
@@ -135,9 +139,11 @@ flowchart TD
 | Loop | From | To | Cap |
 |---|---|---|---|
 | Data validation rewrite | P5.5 critical | P5 | 2 |
+| Porter depth gate | P5.6 critical | P3 | 1 |
 | HTML gate fail | P5_gate exit ≠ 0 | P5 | 2 |
 | **Red team report** | P5.7 critical | P5 | **1** |
 | Validator 2 ↔ Validator 1 | P10.5 change | P10 | 3 |
+| Voice gate | P10.6 critical | P8 | 1 |
 | **Red team cards (layout)** | P10.7 critical | P9 | **1** |
 | **Red team cards (content)** | P10.7 critical | P8 | **1** |
 | ER subagent retry (same prompt) | any P1/P2/P3 fail | self | 2 |
@@ -155,6 +161,8 @@ flowchart TD
 | P0 gate provenance | `meta/gates.json` |
 | Red-team manifests | `meta/red_team/{phase_id}.input.json` |
 | Red-team verdicts | `validation/red_team_{numeric,narrative}_{phase}.json` |
+| Porter depth gate | `validation/porter_depth_gate.json` |
+| Cards 1-5 voice gate | `validation/voice_gate.json` |
 | P12 audit + QA report | `validation/post_card_audit.json` + `validation/QA_REPORT.md` |
 | Incident post-check verdict | `validation/incident_postcheck.json` |
 | HTML report | `research/{Company}_Research_{LANG}.html` |
@@ -172,7 +180,7 @@ flowchart TD
 
 ## Quick read
 
-The pipeline is bracketed. **Outside the bracket** are user prompt and DB write. **Inside the bracket** are 31 phases, of which:
+The pipeline is bracketed. **Outside the bracket** are user prompt and DB write. **Inside the bracket** are 34 phases, of which:
 
 - 4 ⭐ phases are the harness's institutional-memory loop and adversarial-review fire — they exist *because* of past failures (`INCIDENTS.md`).
 - 3 🔒 phases halt for the user — auto mode does not waive them.

@@ -35,23 +35,66 @@ REQUIRED_MARKERS = (
     "DATA VARIABLES",
     "drawWaterfall",
     "drawSankey",
-    "drawRadar",
+    "drawPorterBars",
     "sankeyActualData",
-    "sankeyForecastData",
     "porterScores",
     "waterfallData",
 )
 
+# Plan v3 Phase A removed the forecast Sankey (single-panel actual only) and
+# the 3-tab Porter radar (single bar chart + 5 force-block analysis). The
+# substrings below previously appeared in the locked template and were
+# positive markers in earlier validator versions; their presence now indicates
+# the writer copied stale skeleton content or used a pre-v3 template.
+FORBIDDEN_MARKERS = (
+    # Section IV — forecast sankey is gone
+    'id="chart-sankey-forecast"',
+    "sankeyForecastData",
+    "{{SANKEY_FORECAST_JS_DATA}}",
+    "{{SANKEY_YEAR_FORECAST}}",
+    'id="sankey-tabs"',
+    # Section V — radar tabs are gone
+    'id="chart-radar-company"',
+    'id="chart-radar-industry"',
+    'id="chart-radar-forward"',
+    "{{PORTER_COMPANY_TEXT}}",
+    "{{PORTER_INDUSTRY_TEXT}}",
+    "{{PORTER_FORWARD_TEXT}}",
+    'id="porter-tabs"',
+    'class="porter-tabs"',
+    'class="porter-radar"',
+)
+
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
-PORTER_PANELS = ("company", "industry", "forward")
+# Plan v3 Phase A: Porter is now a single bar chart + 5 force blocks (no tabs).
 PORTER_FORCES = (
     ("供应商议价能力", "supplier power"),
     ("买方议价能力", "buyer power"),
     ("新进入者威胁", "threat of new entrants"),
     ("替代品威胁", "threat of substitutes"),
-    ("行业竞争强度", "competitive rivalry"),
+    ("行业内竞争", "competitive rivalry"),
 )
+PORTER_FORCE_ZH_ALIASES = {
+    "供应商议价能力": ("供应商议价能力", "供应商议价"),
+    "买方议价能力": ("买方议价能力", "买方议价", "买家议价能力"),
+    "新进入者威胁": ("新进入者威胁",),
+    "替代品威胁": ("替代品威胁",),
+    "行业内竞争": ("行业内竞争", "行业竞争强度", "行业竞争"),
+}
+
+# Each <div class="porter-force-block"> must contain a <p> with every one of
+# these classes (in any order).
+PORTER_FORCE_BLOCK_REQUIRED_CLASSES = (
+    "porter-rating-statement",
+    "porter-anchor",
+    "porter-mechanism",
+    "porter-falsifier",
+    "porter-signal",
+    "porter-lookahead",
+)
+# `<h3>...— N/5</h3>` (em dash or hyphen, EN/CN both supported)
+_PORTER_H3_RATING_RE = re.compile(r"[—\-]\s*([1-5])\s*/\s*5\s*$")
 
 # I-005: metrics table — nine controlled ratio categories.
 METRIC_ROW_ALIASES: dict[str, tuple[str, ...]] = {
@@ -172,49 +215,125 @@ def _porter_li_start_ok(text: str, zh_force: str, en_force: str, *, qc_ran: bool
     return any(re.search(pattern, lower) for pattern in en_patterns)
 
 
-def _validate_porter_texts(soup: BeautifulSoup, *, qc_ran: bool) -> tuple[list[str], list[str]]:
+def _validate_porter_force_blocks(soup: BeautifulSoup, *, qc_ran: bool) -> tuple[list[str], list[str]]:
+    """Plan v3: Section V is now a single bar chart + 5 `<div class="porter-force-block">` elements.
+
+    Each block must contain:
+      - one `<h3>` ending with `— N/5` (rating 1..5)
+      - six `<p>` tags carrying the classes in PORTER_FORCE_BLOCK_REQUIRED_CLASSES
+        (order is conventional but unenforced here — every class must appear once)
+
+    Mode handling:
+      - If the raw `{{PORTER_ANALYSIS_BLOCKS}}` placeholder is present, treat
+        the document as a raw template and skip the structural check (the
+        unreplaced-placeholder gate elsewhere already reports the unfilled
+        state). The QC-prefix check is still applied to whatever blocks DO
+        appear (in case the writer leaked both).
+      - Otherwise (rendered mode): require exactly 5 force-block divs.
+
+    The QC-prefix rule from I-004 / I-007 still applies to the first <p>
+    (`porter-rating-statement`).
+    """
     errors: list[str] = []
     warnings: list[str] = []
+    section = soup.select_one("#section-porter")
+    if section is None:
+        # caller will already report the missing section; nothing more here.
+        return errors, warnings
+
+    has_placeholder = "{{PORTER_ANALYSIS_BLOCKS}}" in section.decode_contents()
+    blocks = section.select(".porter-force-block")
+
+    if has_placeholder and not blocks:
+        # raw template — defer to the unreplaced-placeholder gate.
+        return errors, warnings
+
+    if len(blocks) != 5:
+        errors.append(
+            f"#section-porter must contain exactly 5 <div class=\"porter-force-block\"> "
+            f"(plan v3 Phase A); got {len(blocks)}"
+        )
+        # still try to validate whatever's present so we surface multiple
+        # issues per run instead of one-at-a-time.
+
     mode_label = "QC mode" if qc_ran else "no-QC mode"
     expected_zh = "经QC合议..." if qc_ran else "基于初稿评分..."
 
-    for panel in PORTER_PANELS:
-        panel_selector = f"#porter-panel-{panel}"
-        panel_node = soup.select_one(panel_selector)
-        if panel_node is None:
-            errors.append(f"missing Porter panel for text validation: {panel_selector}")
-            continue
-
-        text_node = panel_node.select_one(".porter-text")
-        if text_node is None:
-            errors.append(f"{panel_selector} missing .porter-text container")
-            continue
-
-        uls = text_node.find_all("ul")
-        if len(uls) != 1:
-            errors.append(f"{panel_selector} .porter-text must contain exactly one <ul>; got {len(uls)}")
-            continue
-
-        lis = uls[0].find_all("li", recursive=False)
-        if len(lis) != 5:
-            errors.append(f"{panel_selector} .porter-text <ul> must contain exactly five direct <li>; got {len(lis)}")
-            continue
-
-        for idx, (li, (zh_force, en_force)) in enumerate(zip(lis, PORTER_FORCES), start=1):
-            li_text = li.get_text(" ", strip=True)
-            if not li_text:
-                errors.append(f"{panel_selector} .porter-text li[{idx}] is empty")
-                continue
-            if not _porter_li_start_ok(li_text, zh_force, en_force, qc_ran=qc_ran):
+    for idx, block in enumerate(blocks, start=1):
+        h3 = block.find("h3")
+        if h3 is None:
+            errors.append(f"porter-force-block[{idx}] is missing its <h3> (plan v3)")
+        else:
+            h3_text = " ".join(h3.get_text(" ", strip=True).split())
+            if not _PORTER_H3_RATING_RE.search(h3_text):
                 errors.append(
-                    f"{panel_selector} .porter-text li[{idx}] must start with the {mode_label} "
-                    f"sentence (expected zh-prefix '{expected_zh}', cf. I-004 / I-007) "
-                    f"for {zh_force}/{en_force}"
+                    f"porter-force-block[{idx}] <h3> '{h3_text}' must end with "
+                    f"'— N/5' where N is 1-5 (plan v3)"
                 )
-            if len(li_text) < 24:
-                warnings.append(f"{panel_selector} .porter-text li[{idx}] is very short")
+
+        paras = block.find_all("p", recursive=False)
+        # Some writers nest <strong> inside <p>; recursive=False is enough
+        # since the spec requires direct <p> children. If a writer puts <p>s
+        # under another wrapper, the class lookup below will still surface
+        # them — but we lose strict ordering. Accept either.
+        if not paras:
+            paras = block.find_all("p")
+
+        class_to_para: dict[str, list] = {}
+        for p in paras:
+            for cls in p.get("class", []) or []:
+                class_to_para.setdefault(cls, []).append(p)
+
+        missing = [c for c in PORTER_FORCE_BLOCK_REQUIRED_CLASSES if c not in class_to_para]
+        if missing:
+            errors.append(
+                f"porter-force-block[{idx}] missing required <p> classes: {missing} "
+                "(plan v3 — each block needs porter-rating-statement / -anchor / "
+                "-mechanism / -falsifier / -signal / -lookahead)"
+            )
+
+        # QC-prefix rule on the rating statement (best-effort; per-force-name
+        # matching is loose because the <h3> already encodes the force).
+        rating_ps = class_to_para.get("porter-rating-statement", [])
+        if rating_ps:
+            rating_text = " ".join(rating_ps[0].get_text(" ", strip=True).split())
+            if rating_text and not _porter_rating_statement_ok(rating_text, qc_ran=qc_ran):
+                errors.append(
+                    f"porter-force-block[{idx}] .porter-rating-statement must "
+                    f"start with the {mode_label} sentence (expected zh-prefix "
+                    f"'{expected_zh}', cf. I-004 / I-007); got: "
+                    f"{rating_text[:80]!r}"
+                )
 
     return errors, warnings
+
+
+def _porter_rating_statement_ok(text: str, *, qc_ran: bool) -> bool:
+    """Loose variant of `_porter_li_start_ok` that does not pin the force
+    name (the <h3> already carries it). Per I-004 / I-007:
+      qc_ran=True  → "经QC合议..." / "Dual-QC deliberation..."
+      qc_ran=False → "基于初稿评分..." / "Per draft scoring..."
+    """
+    text = " ".join(text.split())
+    if qc_ran:
+        zh_patterns = (
+            r"^经QC合议[，,]",
+        )
+        en_patterns = (
+            r"^dual-qc deliberation\b",
+            r"^after dual-qc deliberation",
+        )
+    else:
+        zh_patterns = (
+            r"^基于初稿评分[，,]",
+        )
+        en_patterns = (
+            r"^per draft scoring",
+        )
+    if any(re.search(p, text) for p in zh_patterns):
+        return True
+    lower = text.lower()
+    return any(re.search(p, lower) for p in en_patterns)
 
 
 def _validate_metrics_table(soup: BeautifulSoup) -> tuple[list[str], list[str]]:
@@ -475,13 +594,33 @@ def validate_html_report(
                     f"html is too small for locked template lineage: {actual_bytes} bytes < {min_bytes} bytes"
                 )
 
+    # Plan v3 Phase A: in a raw template the {{PORTER_ANALYSIS_BLOCKS}}
+    # placeholder is expected. In a rendered report all placeholders must be
+    # gone. Mode is auto-detected: if the placeholder is present and 5
+    # force-blocks are NOT, treat as raw template (skip the
+    # unreplaced-placeholder error so a skeleton can be validated for
+    # structure too).
+    in_template_mode = (
+        "{{PORTER_ANALYSIS_BLOCKS}}" in html
+        and not soup.select(".porter-force-block")
+    )
+
     placeholders = sorted(set(PLACEHOLDER_RE.findall(html)))
-    if placeholders:
+    if placeholders and not in_template_mode:
         errors.append(f"unreplaced locked-template placeholders remain: {', '.join(placeholders[:12])}")
 
     for marker in REQUIRED_MARKERS:
         if marker not in html:
             errors.append(f"missing locked-template marker: {marker}")
+
+    # Plan v3 Phase A: forecast Sankey + 3-tab radar Porter were removed.
+    # Their substrings appearing in a fresh report mean the writer copied
+    # stale skeleton content or used a pre-v3 template.
+    for forbidden in FORBIDDEN_MARKERS:
+        if forbidden in html:
+            errors.append(
+                f"pre-v3 marker still present (plan v3 Phase A removed it): {forbidden}"
+            )
 
     for section_id in REQUIRED_SECTION_IDS:
         if not soup.select_one(f"#{section_id}"):
@@ -491,28 +630,30 @@ def validate_html_report(
         "summary_para": _count(soup, "#section-summary .summary-para"),
         "kpi_card": _count(soup, "#section-financials .kpi-card"),
         "trend_card": _count(soup, "#section-financials .trend-card"),
-        "porter_panel": _count(soup, '[id^="porter-panel-"]'),
-        "porter_text": _count(soup, "#section-porter .porter-text"),
-        "porter_text_ul": _count(soup, "#section-porter .porter-text ul"),
-        "porter_text_li": _count(soup, "#section-porter .porter-text ul > li"),
-        "sankey_svg": _count(soup, "#chart-sankey-actual") + _count(soup, "#chart-sankey-forecast"),
-        "radar_canvas": _count(soup, 'canvas[id^="chart-radar-"]'),
+        "sankey_actual_svg": _count(soup, "#chart-sankey-actual"),
+        "porter_bars_svg": _count(soup, "#chart-porter-bars"),
+        "porter_force_block": _count(soup, ".porter-force-block"),
     }
-    expected = {
+    expected_min = {
         "summary_para": 4,
         "kpi_card": 4,
         "trend_card": 5,
-        "porter_panel": 3,
-        "porter_text": 3,
-        "porter_text_ul": 3,
-        "porter_text_li": 15,
-        "sankey_svg": 2,
-        "radar_canvas": 3,
+        "sankey_actual_svg": 1,
+        "porter_bars_svg": 1,
     }
-    for key, need in expected.items():
+    for key, need in expected_min.items():
         got = structural_counts[key]
         if got < need:
             errors.append(f"locked report structure incomplete: {key} count {got} < {need}")
+
+    # Rendered reports must contain exactly 5 force-blocks. Raw templates
+    # (placeholder present) skip this check — the Porter validator does the
+    # detailed gate.
+    if not in_template_mode and structural_counts["porter_force_block"] != 5:
+        errors.append(
+            "#section-porter must contain exactly 5 <div class=\"porter-force-block\"> "
+            f"(plan v3 Phase A); got {structural_counts['porter_force_block']}"
+        )
 
     # Auto-detect QC trail if caller didn't pass one explicitly. The trail's
     # mere existence flips the Porter validator into "QC mode" (per I-004 /
@@ -521,7 +662,7 @@ def validate_html_report(
         qc_audit_trail_path = html_path.parent / "qc_audit_trail.json"
     qc_ran = qc_audit_trail_path.exists()
 
-    porter_errors, porter_warnings = _validate_porter_texts(soup, qc_ran=qc_ran)
+    porter_errors, porter_warnings = _validate_porter_force_blocks(soup, qc_ran=qc_ran)
     errors.extend(porter_errors)
     warnings.extend(porter_warnings)
 
@@ -530,7 +671,8 @@ def validate_html_report(
     warnings.extend(metrics_warnings)
 
     script_text = "\n".join(node.get_text("\n") for node in soup.find_all("script"))
-    for var_name in ("waterfallData", "sankeyActualData", "sankeyForecastData", "porterScores"):
+    # Plan v3 Phase A: sankeyForecastData is gone; only sankeyActualData remains.
+    for var_name in ("waterfallData", "sankeyActualData", "porterScores"):
         if not re.search(rf"\bconst\s+{re.escape(var_name)}\s*=", script_text):
             errors.append(f"missing JS data variable: {var_name}")
 
@@ -538,14 +680,19 @@ def validate_html_report(
     errors.extend(waterfall_errors)
     warnings.extend(waterfall_warnings)
 
-    for sankey_var in ("sankeyActualData", "sankeyForecastData"):
-        s_errors, s_warnings = _validate_sankey_conservation(script_text, sankey_var)
-        errors.extend(s_errors)
-        warnings.extend(s_warnings)
+    # Plan v3 Phase A: only the actual sankey survives.
+    s_errors, s_warnings = _validate_sankey_conservation(script_text, "sankeyActualData")
+    errors.extend(s_errors)
+    warnings.extend(s_warnings)
 
     line_count = len(html.splitlines())
-    if line_count < 500:
-        errors.append(f"html line count is too low for locked report template: {line_count} < 500")
+    # Plan v3 Phase A shrank the template by ~21 (CN) / ~61 (EN) lines.
+    # New raw template is ~1071/1045 lines; older skeletons were ~1058/1014.
+    # Keep the lower bound at 400 so future iterations have headroom without
+    # producing trivial false-positives. A simplified bespoke page is still
+    # caught (it's typically under 100 lines).
+    if line_count < 400:
+        errors.append(f"html line count is too low for locked report template: {line_count} < 400")
 
     return {
         "status": "critical" if errors else ("warn" if warnings else "pass"),

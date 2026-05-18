@@ -1,0 +1,26 @@
+{
+  "company_perspective": {
+    "scores": [4, 3, 2, 3, 5],
+    "supplier_power": "供应商集中度高，议价空间有限。",
+    "buyer_power": "前五大客户集中度中等。",
+    "new_entrants": "资本与技术壁垒极高。",
+    "substitutes": "ASIC与chiplet形成替代压力。",
+    "rivalry": "行业内竞争极度激烈。"
+  },
+  "industry_perspective": {
+    "scores": [4, 3, 2, 3, 5],
+    "supplier_power": "EUV单一供应商。",
+    "buyer_power": "买方议价能力中性。",
+    "new_entrants": "新进入者难以进入。",
+    "substitutes": "ASIC份额上升。",
+    "rivalry": "Top-3厂商capex竞赛。"
+  },
+  "forward_perspective": {
+    "scores": [4, 3, 2, 3, 5],
+    "supplier_power": "未来3-4季度维持高位。",
+    "buyer_power": "可能小幅回升。",
+    "new_entrants": "维持低位。",
+    "substitutes": "上升通道。",
+    "rivalry": "维持5分。"
+  }
+}

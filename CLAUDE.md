@@ -11,7 +11,7 @@ This repo is a **harness-backed skill**:
 - **Skill side** (LLM-facing, auto-triggered): `SKILL.md` is the thin entry. It tells the model *what to do* and dictates a strict **boot order** — read on every research-style invocation. See `SKILL.md` § "Boot order — read in this order, every session".
 - **Harness side** (architecture/CLI/tests/DB/audit): `HARNESS.md` tells maintainers *how it runs*. The runtime brief that actually drives a research session is `agents/orchestrator.md`.
 
-The machine-readable phase + gate contract is `workflow_meta.json` (33 phases). It is authoritative — anything in prose docs that contradicts it is a bug in the prose.
+The machine-readable phase + gate contract is `workflow_meta.json` (35 phases). It is authoritative — anything in prose docs that contradicts it is a bug in the prose.
 
 ## Boot order for an Anamnesis Research run
 
@@ -33,7 +33,8 @@ All Python commands assume the project root (`/Users/pppop/Desktop/Projects/Skil
 ```bash
 # First-time setup
 git submodule update --init --recursive    # ER + EP submodules are SHA-pinned (.gitmodules)
-pip install -r requirements.txt
+pip install -r requirements.txt            # Pillow, BeautifulSoup, pytesseract, requests, pytest
+brew install tesseract                     # macOS: required by P12 layer 2 (PNG OCR via pytesseract)
 python anamnesis.py init                   # builds db/equity_kb.sqlite from db/schema/
 cp USER.md.template USER.md                # optional sticky preferences
 
@@ -56,6 +57,7 @@ python anamnesis.py status
 
 # Single test files (examples)
 pytest tests/test_db_pii.py -v             # PII regression — no email may persist to any TEXT column
+pytest tests/test_user_agent_pii.py -v     # PII regression — SEC EDGAR email must not leak via UA strings
 pytest tests/test_aggregate_p12.py -v      # P12 layer aggregation
 pytest tests/test_reconcile_numbers.py -v  # numerical tolerance enforcement
 pytest tests/test_db_migrations.py -v      # cold + existing DB
@@ -107,13 +109,18 @@ Every run lives under `output/{Company}_{Date}_{RunID}/` (gitignored). Two files
 
 Schema-valid outputs already on disk are reused — no double-billing the LLM.
 
-### Three hook/skill surfaces under `.claude/`
+### Three hook/skill surfaces under `.claude/` (with `.codex/` and `.cursor/` parallels)
 
 1. `.claude/skills/anamnesis-research/SKILL.md` — project skill mount (auto-discovery). Must stay in description-sync with the root `SKILL.md` (test: `tests/test_skill_mount_parity.py`).
 2. `.claude/settings.json` + `.claude/hooks/inject_incidents.py` — `UserPromptSubmit` hook. Injects an `INCIDENTS.md` reminder on research-style prompts (EN/ZH). The hook is a safety net, not a substitute — `P_INCIDENT_PRECHECK` must still run.
 3. `.claude/commands/log-incident.md` — the `/log-incident` slash command (the Curate beat).
 
-The Codex parallel of these is `.codex/hooks.json` + `.codex/hooks/inject_incidents.py`. Hook shell commands must resolve their script path independent of cwd (including inside submodules) — see `references/maintenance.md` § "Hook cwd-invariance".
+Parallel surfaces for other agents (the Curate beat must work from any of them, since users may /log-incident from whichever harness ran the failing session):
+
+- `.codex/hooks.json` + `.codex/hooks/inject_incidents.py` — Codex prompt hook.
+- `.cursor/commands/log-incident.md` — Cursor slash command.
+
+Hook shell commands must resolve their script path independent of cwd (including inside submodules) — see `references/maintenance.md` § "Hook cwd-invariance".
 
 ## Hard floor (do not violate without explicit user override in the same turn)
 
@@ -142,7 +149,7 @@ Current tolerances: margins/ratios/pp: ±0.5pp; currency: ±0.5% relative; growt
 
 | Topic | File |
 |---|---|
-| Phase-by-phase narrative (33 phases) | `references/phase_contract.md` |
+| Phase-by-phase narrative (35 phases) | `references/phase_contract.md` |
 | Visual workflow diagram | `references/workflow_diagram.md` |
 | Per-gate rules (whitelisted `source` values) | `references/p0_gates.md` |
 | Subagent toolset whitelist, concurrency caps, timeouts | `references/subagent_toolsets.md` |

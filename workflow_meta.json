@@ -214,6 +214,18 @@
       "retry_cap": 2
     },
     {
+      "id": "P5_6_porter_depth_gate",
+      "produces": ["validation/porter_depth_gate.json"],
+      "blocking": true,
+      "interactive": false,
+      "parallelism": "sequential",
+      "tool": "tools/research/validate_porter_analysis.py",
+      "retry_to": "P3_porter",
+      "retry_cap": 1,
+      "blocks_on_fail": ["P5_7_RED_TEAM"],
+      "executor_note": "Porter five-forces single-perspective depth gate (plan v3). Validates research/porter_analysis.json v2 schema: a single forces[] array with 5 forces, each carrying 6 mandatory segments (qc_statement / data_anchor / mechanism / falsifier / primary_signal / look_ahead). v1 three-perspective schema is rejected with a migration hint. Deterministic gate; red_team_narrative §6.b attacks the quality of what passes here."
+    },
+    {
       "id": "P5_7_RED_TEAM",
       "produces": [
         "validation/red_team_numeric_P5_7_RED_TEAM.json",
@@ -298,6 +310,23 @@
       "agent": "skills_repo/ep/agents/validator-2-agent.md",
       "retry_to": "P10_validator1",
       "retry_cap": 3
+    },
+    {
+      "id": "P10_6_voice_gate",
+      "produces": ["validation/voice_gate.json"],
+      "blocking": true,
+      "interactive": false,
+      "parallelism": "sequential",
+      "tool": "skills_repo/ep/scripts/validate_cards.py",
+      "inputs": [
+        "cards/{stem}.card_slots.json",
+        "cards/{stem}.card_slots_worker_notes.json",
+        "research/{stem}.html"
+      ],
+      "retry_to": "P8_content",
+      "retry_cap": 1,
+      "blocks_on_fail": ["P10_7_RED_TEAM", "P11_render", "P_DB_INDEX"],
+      "executor_note": "Cards 1-5 analyst-content gate (plan v3). Runs EP validate_card1_5_analytical_content via the EP submodule wrapper. Requires the mandatory <stem>.card_slots_worker_notes.json sidecar. Checks: per-slot data_anchor (number + comp anchor), variant_view ≥15 chars, ≥1 of (falsifier ≥20 / primary_quote / catalyst_with_date), authority slots (brand_statement, judgement_paragraph) require primary_quote, backstop banned phrases. Deterministic gate; red_team_narrative §6.a attacks the quality of what passes here."
     },
     {
       "id": "P10_7_RED_TEAM",
