@@ -106,7 +106,7 @@ flowchart TD
     P11 --> P12[P12 final_audit ★<br/>post_card_auditor]
     P12 --> P12L1[L1 reconcile_numbers · blocks]
     P12L1 --> P12L2[L2 ocr_cards · blocks]
-    P12L2 --> P12L3[L3 web_third_check · blocks]
+    P12L2 --> P12L3[L3 web_third_check · pending→warn]
     P12L3 --> P12L4[L4 db_cross_validate · cold-start OK]
 
     %% ====== INCIDENT POSTCHECK ======

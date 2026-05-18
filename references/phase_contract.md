@@ -153,7 +153,7 @@ Layers in order, via `agents/post_card_auditor.md`:
 |---|---|---|
 | 1. Numerical reconciliation | `tools/audit/reconcile_numbers.py` | yes |
 | 2. OCR over the 6 PNGs | `tools/audit/ocr_cards.py` | yes |
-| 3. Web third-check (top-3 numbers) | `tools/audit/web_third_check.py` | yes |
+| 3. Web third-check (top-3 numbers) | `tools/audit/web_third_check.py` | no — emits a `pending` envelope; aggregator downgrades to `warn` if the envelope is still unfilled at audit time. See `workflow_meta.json` envelope_note. **Do not claim Top-3 was verified if you did not actually fill the envelope.** |
 | 4. DB cross-validate | `tools/audit/db_cross_validate.py` | no (cold-start OK) |
 | 5. User-Agent PII guard | `tools/audit/user_agent_pii.py` | yes |
 

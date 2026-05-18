@@ -1,6 +1,9 @@
 # Per-user runtime state
 USER.md
 
+# Claude Code / agent harness runtime state (locks, schedules, etc.)
+.claude/scheduled_tasks.lock
+
 # Local database
 db/equity_kb.sqlite
 db/equity_kb.sqlite-*

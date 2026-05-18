@@ -197,7 +197,7 @@ Walk the EP pipeline from `skills_repo/ep/SKILL.md`:
 Delegate to `agents/post_card_auditor.md`. It runs four layers in order:
 1. `tools/audit/reconcile_numbers.py` — every numeric in `card_slots.json` matches its source JSON within tolerance (see `MEMORY.md`).
 2. `tools/audit/ocr_cards.py` — OCR the 6 PNGs; every key numeric appears in pixels.
-3. `tools/audit/web_third_check.py` — Top-3 numbers re-verified via web search (independent of Validator 2).
+3. `tools/audit/web_third_check.py` — emits a `pending` envelope of Top-3 priority targets. The `post_card_auditor` agent is expected to fill each target's `verification` / `source_url` / `source_value` via host web tools before the aggregator reads the file. **Honest status**: this layer is `fail_blocks: false` in `workflow_meta.json`; an unfilled `pending` envelope downgrades to `warn` rather than fail. Do not claim Top-3 was "verified" if you did not actually fill the envelope. A future PR may add a host-filled verification step that re-enables fail-block.
 4. `tools/audit/db_cross_validate.py` — cross-check vs DB history + peers + macro snapshot.
 5. `tools/audit/user_agent_pii.py` — verify `public_user_agent` exists when SEC email is active and scan captured request logs for the SEC email next to non-SEC URLs.
 

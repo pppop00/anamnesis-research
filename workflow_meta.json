@@ -303,7 +303,7 @@
       "blocking": true,
       "interactive": false,
       "parallelism": "sequential",
-      "tool": "skills_repo/ep/scripts/validate_cards.py",
+      "tool": "tools/photo/voice_gate.py",
       "inputs": [
         "cards/{stem}.card_slots.json",
         "cards/{stem}.card_slots_worker_notes.json",
@@ -312,7 +312,7 @@
       "retry_to": "P8_content",
       "retry_cap": 1,
       "blocks_on_fail": ["P10_7_RED_TEAM", "P11_render", "P_DB_INDEX"],
-      "executor_note": "Cards 1-5 analyst-content gate (plan v3). Runs EP validate_card1_5_analytical_content via the EP submodule wrapper. Requires the mandatory <stem>.card_slots_worker_notes.json sidecar. Checks: per-slot data_anchor (number + comp anchor), variant_view ≥15 chars, ≥1 of (falsifier ≥20 / primary_quote / catalyst_with_date), authority slots (brand_statement, judgement_paragraph) require primary_quote, backstop banned phrases. Deterministic gate; red_team_narrative §6.a attacks the quality of what passes here."
+      "executor_note": "Cards 1-5 analyst-content gate (plan v3). The Anamnesis wrapper tools/photo/voice_gate.py invokes EP's validate_cards.py with the mandatory <stem>.card_slots_worker_notes.json sidecar present, filters EP's stderr for analytical-content issues (worker_notes.* and card_slots.* lines), and writes validation/voice_gate.json. Checks: per-slot data_anchor (number + comp anchor), variant_view ≥15 chars, ≥1 of (falsifier ≥20 / primary_quote / catalyst_with_date), authority slots (brand_statement, judgement_paragraph) require primary_quote, backstop banned phrases. Deterministic gate; red_team_narrative §6.a attacks the quality of what passes here. Missing sidecar = fail (the gate cannot certify content it cannot see)."
     },
     {
       "id": "P10_7_RED_TEAM",
@@ -373,7 +373,8 @@
           "name": "web_third_check",
           "tool": "tools/audit/web_third_check.py",
           "top_n": 3,
-          "fail_blocks": true
+          "fail_blocks": false,
+          "envelope_note": "tools/audit/web_third_check.py emits a `pending` envelope listing Top-N targets; the host LLM (post_card_auditor agent) is expected to fill `verification`, `source_url`, `source_value` for each target before aggregate_p12 sees the JSON. If the envelope is still `pending` at aggregate time it downgrades to `warn` (not fail) — so this layer is not currently a hard fail gate, despite the historical contract. A future PR may add a host-filled verification step that flips this back to fail_blocks: true."
         },
         {
           "name": "db_cross_validate",

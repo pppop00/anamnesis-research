@@ -2,7 +2,7 @@
 schema_version: 1
 name: post_card_auditor
 role: P12 — paying-customer audit on rendered cards plus privacy guard
-description: Runs the independent verification layers on rendered PNGs/final card_slots.json, then the User-Agent PII guard. Layers 1-3 and the privacy guard fail-block; DB cross cold-start is OK. Outputs a machine-readable audit JSON and a human QA report.
+description: Runs the independent verification layers on rendered PNGs/final card_slots.json, then the User-Agent PII guard. Layers 1-2 and the privacy guard fail-block. Layer 3 (web third-check) emits a `pending` envelope; an unfilled envelope downgrades to `warn` at aggregate time rather than fail (so the layer is non-blocking until a host-filled verification step lands — see `workflow_meta.json` envelope_note). DB cross cold-start is OK. Outputs a machine-readable audit JSON and a human QA report.
 allowed_toolsets: ["audit", "db", "web", "io"]
 ---
 
@@ -82,7 +82,7 @@ Pick the Top-3 highest-impact numbers (latest TTM revenue, latest YoY, headline 
 
 This is *defense-in-depth* against Validator 2: V2 verified `card_slots.json` numbers; Layer 3 verifies a sample again, independently, after the slots may have been edited in V2's loop.
 
-**Fail-block** on any disputed-and-confirmed-wrong number.
+**Status reality** (do not claim more than this): `tools/audit/web_third_check.py` only emits a `pending` envelope listing Top-N targets — the host (you, the post_card_auditor agent) is expected to fill each target's `verification`, `source_url`, `source_value`. An unfilled envelope is downgraded to `warn` by the aggregator (not `fail`), so this layer is **not** currently a hard gate. If you did not actually run web searches and fill the envelope, mark the layer pending/warn and say so — never write `pass` on the back of an unfilled envelope, and never claim "Top-3 verified" in the QA report unless you literally filled it. **Fail-block applies only on a disputed-and-confirmed-wrong number that you wrote into the envelope yourself.**
 
 ### Layer 4 — DB cross-validate
 

@@ -400,7 +400,25 @@ def index_run(run_dir: Path, db_path: Path) -> IndexResult:
                     )
                     result.bump("macro_factors_period")
 
-            # porter_scores_period — 3 perspectives × 5 forces
+            # porter_scores_period — supports two schemas:
+            #   v1 (legacy):  three perspectives × 5 forces, keyed by `company_perspective` /
+            #                 `industry_perspective` / `forward_perspective`.
+            #   v2 (current): single perspective × 5 forces, top-level `forces[]` array in
+            #                 canonical order (supplier_power, buyer_power, new_entrants,
+            #                 substitutes, rivalry). MEMORY.md "QC scoring math (P3.6) —
+            #                 plan v3 single perspective" is the authoritative spec.
+            #
+            # v2 rows are written with perspective='company' because:
+            #   - porter_scores_period.perspective has a CHECK constraint accepting only
+            #     ('company','industry','forward'); adding 'single' would require a schema
+            #     migration with downstream churn (queries.py, sector_report.py).
+            #   - downstream readers (get_peer_porter_matrix, porter_heatmap) default to
+            #     perspective='company', so v2 rows surface automatically without callers
+            #     having to learn a new value.
+            #   - v2 collapsed the three v1 perspectives into one company-focused view —
+            #     'company' is semantically the closest match.
+            # v1 historical runs continue to populate all three perspective values; v2
+            # runs populate only 'company'. Heatmap queries see one row per ticker either way.
             qc_porter_items = _g(qc, "porter", "items", default=[]) or []
             qc_changed: dict[tuple[str, str], dict] = {}
             for it in qc_porter_items:
@@ -410,28 +428,29 @@ def index_run(run_dir: Path, db_path: Path) -> IndexResult:
                 if it.get("force"):
                     qc_changed[key] = it
 
-            perspective_aliases = (
-                ("company",   ("company_perspective", "company_level")),
-                ("industry",  ("industry_perspective", "industry_level")),
-                ("forward",   ("forward_perspective", "forward_looking")),
-            )
-            for short, candidate_keys in perspective_aliases:
-                persp_data = None
-                for k in candidate_keys:
-                    persp_data = _g(pa, k)
-                    if persp_data:
-                        break
-                if not persp_data:
-                    continue
-                scores = persp_data.get("scores")
-                if not isinstance(scores, list):
-                    continue
+            schema_v = pa.get("schema_version") if isinstance(pa, dict) else None
+            top_forces = pa.get("forces") if isinstance(pa, dict) else None
+            top_scores = pa.get("scores") if isinstance(pa, dict) else None
+
+            if schema_v == 2 or isinstance(top_forces, list):
+                # ----- v2: single perspective, top-level forces[] -----
+                forces_arr = top_forces if isinstance(top_forces, list) else []
+                short = "company"
                 for i, force in enumerate(PORTER_FORCES):
-                    if i >= len(scores):
-                        break
-                    score = scores[i]
+                    f_obj = forces_arr[i] if i < len(forces_arr) else None
+                    # Prefer the per-force `score`; fall back to top-level scores[i].
+                    score = None
+                    if isinstance(f_obj, dict):
+                        score = f_obj.get("score")
+                    if score is None and isinstance(top_scores, list) and i < len(top_scores):
+                        score = top_scores[i]
                     if not isinstance(score, (int, float)):
                         continue
+                    rationale = ""
+                    if isinstance(f_obj, dict):
+                        rationale = (f_obj.get("qc_statement")
+                                     or f_obj.get("mechanism")
+                                     or "")
                     qc_item = qc_changed.get((short, force))
                     conn.execute(
                         """INSERT OR REPLACE INTO porter_scores_period (
@@ -439,13 +458,57 @@ def index_run(run_dir: Path, db_path: Path) -> IndexResult:
                                rationale_excerpt, qc_score_changed, score_before, score_after, source_run_id
                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (ticker, fiscal_period, short, force, int(round(score)),
-                         ((persp_data.get("narrative") or persp_data.get("text") or ""))[:240],
-                         1 if (qc_item and qc_item.get("score_changed")) else 0,
-                         qc_item.get("score_before") if qc_item else None,
-                         qc_item.get("score_after") if qc_item else None,
+                         rationale[:240],
+                         1 if (qc_item and qc_item.get("score_changed")) else (
+                             1 if (isinstance(f_obj, dict) and f_obj.get("score_changed")) else 0
+                         ),
+                         qc_item.get("score_before") if qc_item else (
+                             f_obj.get("score_before") if isinstance(f_obj, dict) else None
+                         ),
+                         qc_item.get("score_after") if qc_item else (
+                             f_obj.get("score_after") if isinstance(f_obj, dict) else None
+                         ),
                          run_id),
                     )
                     result.bump("porter_scores_period")
+            else:
+                # ----- v1: legacy three-perspective shape -----
+                perspective_aliases = (
+                    ("company",   ("company_perspective", "company_level")),
+                    ("industry",  ("industry_perspective", "industry_level")),
+                    ("forward",   ("forward_perspective", "forward_looking")),
+                )
+                for short, candidate_keys in perspective_aliases:
+                    persp_data = None
+                    for k in candidate_keys:
+                        persp_data = _g(pa, k)
+                        if persp_data:
+                            break
+                    if not persp_data:
+                        continue
+                    scores = persp_data.get("scores")
+                    if not isinstance(scores, list):
+                        continue
+                    for i, force in enumerate(PORTER_FORCES):
+                        if i >= len(scores):
+                            break
+                        score = scores[i]
+                        if not isinstance(score, (int, float)):
+                            continue
+                        qc_item = qc_changed.get((short, force))
+                        conn.execute(
+                            """INSERT OR REPLACE INTO porter_scores_period (
+                                   ticker, fiscal_period, perspective, force, score,
+                                   rationale_excerpt, qc_score_changed, score_before, score_after, source_run_id
+                               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (ticker, fiscal_period, short, force, int(round(score)),
+                             ((persp_data.get("narrative") or persp_data.get("text") or ""))[:240],
+                             1 if (qc_item and qc_item.get("score_changed")) else 0,
+                             qc_item.get("score_before") if qc_item else None,
+                             qc_item.get("score_after") if qc_item else None,
+                             run_id),
+                        )
+                        result.bump("porter_scores_period")
 
             # prediction_waterfall_period
             if pw:

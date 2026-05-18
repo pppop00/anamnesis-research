@@ -28,6 +28,13 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# When invoked as `python tools/audit/aggregate_p12.py ...` the repo root is
+# not on sys.path, so the absolute import below fails. Insert the root so
+# direct script invocation works the same as `python -m`.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from tools.audit.user_agent_pii import audit_run as audit_user_agent_pii
 
 

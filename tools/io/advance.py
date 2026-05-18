@@ -102,35 +102,206 @@ def _gate_source_valid(gates_json: dict, gate_id: str) -> tuple[bool, str]:
     return True, ""
 
 
-_PRODUCES_PLACEHOLDER = re.compile(r"[{}:]")
+_ANNOTATION_RE = re.compile(r"\s*\([^)]+\)\s*$")
+_TEMPLATE_RE = re.compile(r"\{[^}]+\}")
 
 
-def _concrete_produces(produces: list[str]) -> list[str]:
-    """Filter `produces` to entries that look like real filesystem paths.
+@dataclass
+class ParsedProduces:
+    """A parsed entry from a phase's `produces[]` list.
 
-    Excludes `meta/run.json:ticker` (JSON key into a file) and
-    `cards/{stem}.card_slots.json` (template placeholders).
+    workflow_meta.json's `produces` strings come in four flavours and the
+    pre-fix watchdog (Codex P2#2) just skipped anything with `{` or `:`,
+    which silently let through unverified the very gates that matter most
+    (`cards/{stem}.card_slots.json`, `research/structure_conformance.json:html_template_gate`,
+    `validation/ocr_dump/card_{1..6}.txt`). Each kind needs a different
+    on-disk check:
+
+    - **exact**: a literal filesystem path (`research/edge_insights.json`).
+      Check the file exists.
+    - **glob**: a path with `{template}` placeholders or `{N..M}` ranges
+      (`cards/{stem}.card_slots.json`, `validation/ocr_dump/card_{1..6}.txt`).
+      Replace every `{...}` with `*` and require at least one match.
+    - **json_key**: `path:key_name` (`meta/run.json:ticker`,
+      `research/structure_conformance.json:html_template_gate`). Check the
+      file exists AND the named top-level key is set (supports dotted
+      traversal so `a.b.c` walks nested dicts).
+    - **jsonl_event**: `path.jsonl:event_name` (`meta/run.jsonl:incident_precheck.acknowledged`).
+      Check the file exists AND at least one line has `event == event_name`.
+
+    Trailing annotations like `(audited)` / `(compressed)` are stripped
+    before parsing — they document the intent of an in-place update phase
+    and aren't part of the filename.
     """
-    out = []
-    for p in produces or []:
-        if _PRODUCES_PLACEHOLDER.search(p):
+    kind: str  # 'exact' | 'glob' | 'json_key' | 'jsonl_event'
+    path: str  # filesystem path or glob (no annotation, no `:key` suffix)
+    json_key: str | None  # for json_key / jsonl_event kinds
+
+
+def _parse_produces(spec: str) -> ParsedProduces:
+    spec = _ANNOTATION_RE.sub("", spec).strip()
+
+    json_key: str | None = None
+    path = spec
+    if ":" in spec:
+        path, _, json_key = spec.partition(":")
+
+    kind: str
+    if json_key is not None:
+        kind = "jsonl_event" if path.endswith(".jsonl") else "json_key"
+    else:
+        kind = "exact"
+
+    if _TEMPLATE_RE.search(path):
+        if kind == "exact":
+            kind = "glob"
+        path = _TEMPLATE_RE.sub("*", path)
+
+    return ParsedProduces(kind=kind, path=path, json_key=json_key)
+
+
+def _file_has_json_key(path: Path, key: str) -> bool:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    cur: object = data
+    for part in key.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        cur = cur[part]
+    # We accept `null`/`""`/`0`/`false` as "present" — the key being there
+    # is enough; downstream validators judge the value.
+    return True
+
+
+def _file_has_jsonl_event(path: Path, event_name: str) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return False
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
             continue
-        out.append(p)
-    return out
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict) and rec.get("event") == event_name:
+            return True
+    return False
+
+
+def _verify_produces(run_dir: Path, spec: str) -> tuple[bool, str]:
+    parsed = _parse_produces(spec)
+
+    if parsed.kind == "exact":
+        full = run_dir / parsed.path
+        if not full.exists():
+            return False, f"declared produce `{spec}` missing on disk ({full})"
+        return True, ""
+
+    if parsed.kind == "glob":
+        matches = list(run_dir.glob(parsed.path))
+        if not matches:
+            return False, f"declared produce `{spec}` matched no file (glob: {parsed.path})"
+        return True, ""
+
+    if parsed.kind == "json_key":
+        # Path may still contain glob characters from {template} substitution.
+        if any(ch in parsed.path for ch in "*?["):
+            matches = list(run_dir.glob(parsed.path))
+            if not matches:
+                return False, f"declared produce `{spec}`: no file matches glob {parsed.path}"
+            for m in matches:
+                if _file_has_json_key(m, parsed.json_key or ""):
+                    return True, ""
+            return False, (
+                f"declared produce `{spec}`: file(s) exist but none carry json key "
+                f"`{parsed.json_key}` ({[str(m) for m in matches]})"
+            )
+        full = run_dir / parsed.path
+        if not full.exists():
+            return False, f"declared produce `{spec}`: file {full} missing"
+        if not _file_has_json_key(full, parsed.json_key or ""):
+            return False, f"declared produce `{spec}`: file exists but json key `{parsed.json_key}` not found"
+        return True, ""
+
+    if parsed.kind == "jsonl_event":
+        full = run_dir / parsed.path
+        if not full.exists():
+            return False, f"declared produce `{spec}`: jsonl {full} missing"
+        if not _file_has_jsonl_event(full, parsed.json_key or ""):
+            return False, (
+                f"declared produce `{spec}`: jsonl exists but no event line "
+                f"with event=`{parsed.json_key}`"
+            )
+        return True, ""
+
+    return True, ""
 
 
 def _predecessor_artifacts_present(run_dir: Path, phases: list[dict], next_idx: int) -> tuple[bool, str]:
-    """Verify that each prior blocking phase's concrete `produces[]` paths exist."""
+    """Verify that each prior blocking phase's `produces[]` entries are satisfied.
+
+    AND/OR semantics by kind:
+
+    - Multiple `jsonl_event` entries that target the **same** .jsonl path
+      are treated as alternatives (ANY-of). Example: P_INCIDENT_PRECHECK
+      declares both `meta/run.jsonl:incident_precheck.acknowledged` and
+      `meta/run.jsonl:incident_precheck.skipped` — a run with no
+      superseded incidents only emits `acknowledged`, and that should
+      satisfy the check. Treating them as AND would block legitimate runs.
+    - Everything else (exact / glob / json_key) is AND — each entry must
+      hold independently. Two files in produces[] means *both* exist;
+      a glob and a key on the same file is still two checks.
+
+    Missing artifacts are fast-model-skip evidence — refuse to advance
+    until the predecessor actually ran.
+    """
     for prior in phases[:next_idx]:
         if not prior.get("blocking", True):
             continue
-        for rel in _concrete_produces(prior.get("produces", [])):
-            full = run_dir / rel
+
+        # Bucket jsonl_event entries by file path so we can ANY-of them.
+        jsonl_groups: dict[str, list[str]] = {}
+        non_jsonl_specs: list[str] = []
+        for spec in prior.get("produces") or []:
+            parsed = _parse_produces(spec)
+            if parsed.kind == "jsonl_event":
+                jsonl_groups.setdefault(parsed.path, []).append(spec)
+            else:
+                non_jsonl_specs.append(spec)
+
+        for spec in non_jsonl_specs:
+            ok, reason = _verify_produces(run_dir, spec)
+            if not ok:
+                return False, (
+                    f"predecessor {prior['id']} failed produces check: {reason}. "
+                    f"Do not advance until {prior['id']} actually ran."
+                )
+
+        for path, specs in jsonl_groups.items():
+            full = run_dir / path
             if not full.exists():
                 return False, (
-                    f"predecessor {prior['id']} declared `{rel}` in `produces` "
-                    f"but {full} is missing on disk. Fast-model skip suspected — "
-                    f"do not advance until {prior['id']} actually ran."
+                    f"predecessor {prior['id']} failed produces check: jsonl {full} missing"
+                )
+            any_match = False
+            for spec in specs:
+                ok, _ = _verify_produces(run_dir, spec)
+                if ok:
+                    any_match = True
+                    break
+            if not any_match:
+                events = [_parse_produces(s).json_key for s in specs]
+                return False, (
+                    f"predecessor {prior['id']} failed produces check: "
+                    f"{path} exists but has none of the declared events {events}. "
+                    f"At least one alternative event is required as evidence the phase ran."
                 )
     return True, ""
 

@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import csv
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from tools.audit import aggregate_p12
 from tools.io import run_dir as run_dir_mod
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+AGGREGATE_CLI = PROJECT_ROOT / "tools" / "audit" / "aggregate_p12.py"
 
 
 def _seed(tmp_path: Path,
@@ -150,3 +155,21 @@ def test_zh_qa_report(tmp_path: Path) -> None:
     qa = (rd / "validation" / "QA_REPORT.md").read_text(encoding="utf-8")
     assert "渲染数字核对" in qa or "数字核对" in qa
     assert "结论" in qa
+
+
+def test_aggregate_p12_runs_as_script(tmp_path: Path) -> None:
+    """Regression for Codex P1#1: running the aggregator as a script must not ModuleNotFoundError."""
+    rd = _seed(
+        tmp_path,
+        recon_rows=[{"slot_path": "a", "slot_value": "1", "status": "pass"}],
+        ocr_summary={"engine": "tesseract", "status": "pass", "key_misses": [], "decorative_misses": []},
+        web_envelope={"status": "no_targets", "targets": []},
+        db_cross={"status": "no_priors", "checks": []},
+    )
+    res = subprocess.run(
+        [sys.executable, str(AGGREGATE_CLI), "--run-dir", str(rd)],
+        capture_output=True, text=True, cwd="/tmp",
+    )
+    assert "ModuleNotFoundError" not in res.stderr, res.stderr
+    assert res.returncode == 0, f"exit={res.returncode}\nstderr={res.stderr}"
+    assert (rd / "validation" / "post_card_audit.json").exists()
